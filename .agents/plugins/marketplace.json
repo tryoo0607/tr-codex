@@ -1,0 +1,12 @@
+{
+  "name": "tr-codex",
+  "interface": { "displayName": "tr-codex kit" },
+  "plugins": [
+    {
+      "name": "tr-codex",
+      "source": { "source": "local", "path": "./plugins/tr-codex" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}
