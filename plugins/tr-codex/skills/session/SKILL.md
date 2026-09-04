@@ -1,6 +1,6 @@
 ---
 name: session
-description: 세션·작업의 rollover, handoff, resume 또는 무응답 세션 진단에 사용한다. "세션 넘겨줘", "인계", "세션이 멈췄어".
+description: 세션·작업을 이관·위임하거나 실행 중 세션의 plugin runtime을 갱신하고 원격 세션 무응답을 진단할 때 발동 — "세션 넘겨줘/롤오버/핸드오버", 컨텍스트 포화 후속 인계, "기존 세션에도 플러그인 적용", "이 작업 다른 세션/사람/에이전트에 넘겨줘", "세션이 멈췄어/반응 없어". state 기반 롤오버와 HandOff 규격으로 이어받을 경계를 남긴다.
 ---
 
 # session
@@ -22,7 +22,7 @@ description: 세션·작업의 rollover, handoff, resume 또는 무응답 세션
 
 ## 호스트 세션 제어
 
-Codex에서는 60%에 정리를 시작하고 75%에 **resume/fork가 아닌 새 독립 세션**을 안내한다. 새 session id의 pending state 단발 주입과 무응답 세션의 안전 경계는 `references/host-control.md`를 읽는다.
+Codex에서는 60%에 기록 준비를 시작하고 75%에 기록을 마친 뒤 사용자가 `/clear`해도 된다고 안내한다. clear 후 state 단발 주입, 실행 중 Happy/Codex session의 plugin runtime 갱신과 무응답 안전 경계는 `references/host-control.md`를 읽는다.
 
 ## 롤오버 절차
 
@@ -31,6 +31,10 @@ Codex에서는 60%에 정리를 시작하고 75%에 **resume/fork가 아닌 새 
 3. 새 세션에서 읽을 state 한 파일과 바로 다음 행동을 지정한다.
 4. 호스트별 세션 제어 방식으로 새 컨텍스트를 시작한다.
 5. 새 세션은 지정된 state부터 읽고 필요한 소스만 추가로 연다.
+
+## Plugin runtime 갱신
+
+설치·cache 갱신은 `kit`이 소유하고, 이미 실행 중인 세션이 새 skill·hook을 다시 읽게 하는 일은 이 skill이 소유한다. inventory → busy/idle 판정 → canary → 승인된 batch → 동일 세션 정체성과 새 runtime 검증 절차는 `references/runtime-refresh.md`를 따른다.
 
 ## 위임
 
