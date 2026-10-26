@@ -1,79 +1,37 @@
 ---
 name: project
-description: '`~/projects` 아래 project 공간과 local-docs·worktree·backup을 관리하고 프로젝트 지식을 조회·정리할 때 사용한다. "프로젝트 생성", "worktree", "local-docs", "전에 한 작업", "프로젝트 구조", "백업 연결". 코드 내용은 다루지 않는다.'
+metadata:
+  tr-role: policy
+description: 코드 repo와 group의 관계, 임시 Git 프로젝트와 정식 전환, 코드 공간 배치와 workspace를 확인하고 등록·독립 공간 준비를 진행한다. 문서 내부 구성, 설정 파일 편집, 코드 수정이나 세션 인계는 담당하지 않는다.
 ---
 
 # project
 
-프로젝트의 **공간(폴더·worktree)과 기록 인프라(`_local-docs`·백업·케이스)**를 관리한다.
-**코드 내용엔 손대지 않는다** — 커밋·머지·브랜치 전략은 `git`.
+## 목적과 역할 경계
 
-> `_local-docs`에 **무엇을 어떤 형식으로 쓰는가**는 플러그인 루트의 **`LOCAL-DOCS-SCHEMA.md`**가 정본이다. 여긴 그 **바깥일**(자리를 만들고, 백업하고, 옮기는 일)을 한다.
+코드 공간의 대상과 관계, 배치 판단 및 관리 도구를 통한 등록·workspace 조작을 맡는다. profile-setup은 설정 형식과 경로 해석/변경, document는 확인된 문서 위치 내부의 기록·지식 구성을 소유한다. 같은 식별자를 공유하되 코드 폴더와 문서 폴더를 같은 공간으로 취급하지 않는다.
 
-local-docs v2는 plugin root의 `core/llm-wiki/` 공통 계약에 `state → exec` 작업 생명주기를 결합한다. 외부 근거는 `sources/`, 현재 project 지식은 `wiki/`에 두며 모든 작업 기록을 Wiki로 복제하지 않는다.
+## 입력과 전제
 
-## 🔑 먼저 — 갈림선
+요청, 확인된 repo/호스트/경로와 기존 등록을 사용한다. 설정과 관리 도구의 지원 여부를 확인하며 이름만으로 경로나 명령을 만들지 않는다. 이미 확인된 정보는 재사용한다.
 
-| | 어디 |
-|---|---|
-| 프로젝트 시작 · 뼈대 | 아래 **구조** + `LOCAL-DOCS-SCHEMA.md` |
-| 병렬 작업 공간 | `references/worktree.md` |
-| `AGENTS.md` 배치 | `references/agents-md.md` |
-| fork repo remote 구성 | `references/fork.md` |
-| 백업이 안 돌 때 · 새 머신 | `references/backup.md` |
-| 검증 케이스 원장 | `references/cases.md` |
-| 스키마 마이그레이션 | `references/migrate.md` |
-| 기록 재개·과거 작업·project 지식 조회·합성·점검 | `references/local-docs.md` + plugin root `core/llm-wiki/` |
+## 요청별 분기
 
-## 구조
-
-```
-~/projects/
-├─ _docs/<project>/          작업 기록 실파일 (백업됨)
-├─ _assets/<project>/        대용량 원본 (백업 안 됨)
-└─ <project>/
-    ├─ _local-docs → ../_docs/<project>    심링크
-    ├─ <repo>/                             코드 (자체 .git)
-    └─ <repo>.worktrees/<slug>/            병렬작업
-```
-
-`_docs/<project>/` 내부 v2 구조는 [local-docs.md](references/local-docs.md)를 따른다. `state/`, `exec/`, `cases/`, `out/` 경로는 lifecycle hook 호환성을 위해 v1과 같다.
-
-**예외 — bare 레이아웃**: 인프라·kit·유틸 repo는 중첩 없이 `~/projects/<repo>`가 곧 repo다.
-
-> 🔑 **실파일이 프로젝트 밖에 있는 이유**: `git add -f`는 **중첩 git repo 안의 파일을 에러 없이 무시한다.** 안에 두면 그 프로젝트가 repo가 되는 순간 백업이 **조용히** 끊긴다. (실제로 끊겨 있었다 — `references/backup.md`)
-
-## `_assets/` — 대용량 원본
-
-`_docs/`의 형제다. meta-repo `.gitignore`가 `/*` + `!/_docs/`라 **자동으로 무시된다.**
-
-성격이 다르면 다루는 법도 다르므로 셋으로 나눈다:
-
-| | 무엇 | 주의 |
+| 요청 | 선택 조건 | 읽을 reference |
 |---|---|---|
-| `deploy/` | 기동 가능한 산출물 (jar·바이너리·인스턴스) | 🔑 **secret을 품기 쉽다** (키스토어·인증서) |
-| `data/` | 적재용 데이터 (스키마·덤프·시드) | 재취득 가능한지 확인 |
-| `refs/` | 읽기용 원본 (로그·증적·제공 자료) | 대개 **재취득 불가** → 지우면 끝 |
+| 코드 공간 구조 확인 또는 배치 검토 | 해당 요청이 포함됨 | [구조와 배치](references/structure.md) |
+| 임시 프로젝트 준비 또는 정식 전환 | 해당 요청이 포함됨 | [구조와 배치의 임시 프로젝트와 정식 전환](references/structure.md#임시-프로젝트와-정식-전환), [프로젝트 관리의 임시 프로젝트와 정식 전환](references/management.md#임시-프로젝트와-정식-전환) |
+| repo 등록/연결 또는 group 구성 | 해당 요청이 포함됨 | [프로젝트 관리](references/management.md)의 연결과 공간 준비 |
+| 작업할 코드 위치 확인 | 해당 요청이 포함됨 | [프로젝트 관리](references/management.md)의 위치 확인 |
+| 병렬 작업 공간 준비 | 해당 요청이 포함됨 | [프로젝트 관리](references/management.md)의 연결과 공간 준비 |
+| 코드 경로 설정 작성, 변경 또는 검증 | 해당 요청이 포함됨 | [설정 연결](references/configuration.md) |
 
-- **문서엔 결론과 핵심 발췌만** 쓰고 원본은 상대경로로 가리킨다. 폴더 slug를 문서 slug와 공유하면 `grep <slug>`로 양쪽이 잡힌다.
-- **백업 대상이 아니다.** 재취득 불가 자료가 들어오면 그 사실을 적고 별도 백업이 필요한지 판단한다 — `_docs/`에 넣는 건 답이 아니다(용량).
+같은 요청은 위에서부터 처음 일치한 하나를 선택하고 별도 추가 요청은 각각 선택한다. 구조 자료는 판단에 필요한 절만 확인한다. 관리 절차가 확인 수단을 선택하며 로컬 확인과 Orca를 사용자 요청의 대안으로 나누지 않는다. 대상 도구 부재는 조작 reference의 실패 기준을 따른다. 사용하지 않는 분기와 설정 변경 절차를 기본 조회하지 않는다.
 
-### ⚠️ secret이 있으면 `chmod 700`
+## 제약과 주의점
 
-`~/projects`가 다른 계정에 **읽기전용 bind mount로 노출되는 구성**이면, ro는 **쓰기만 막고 읽기는 못 막는다.** 기본 755면 그 계정이 그대로 읽는다.
+조회 요청을 등록·생성·브랜치 변경으로 확대하지 않는다. 독립 작업이 필요할 때만 추가 공간을 준비한다. 새 공간 생성은 현재 세션 이동이 아니며 group 변경은 코드/문서 폴더 이동이 아니다. 원격 취득, 삭제와 이동 등 상태 변경은 현재 정책과 승인 범위를 따른다.
 
-```sh
-chmod 700 _assets/<project>/deploy
-find _assets/<project>/deploy -type f -exec chmod 600 {} +
-sudo -u <그계정> ls <노출경로>/deploy    # "허가 거부"여야 정상
-```
+## 결과와 완료 판단
 
-## 경계
-
-| 일 | 어디 |
-|---|---|
-| 커밋 · 머지 · rebase · PR · 브랜치 전략 | `git` — project는 worktree와 **딸린 브랜치를 낳기만** 한다 |
-| 기록의 형식·스키마 | `LOCAL-DOCS-SCHEMA.md` |
-| 무엇을 기록하나 | **백본** — 각 단계의 `returns` |
-| kit 자체 설치·점검 | `kit` |
-| project 밖에서도 재사용할 일반 지식 | `knowledge` |
+확인된 대상, 관계, 실제 경로, 조작 결과와 미결을 전달한다. 등록 상태와 로컬 파일 확인, 설정 저장과 실제 공간 조작을 구별한다. 분기별 완료/실패 기준은 선택한 reference에서 확인한다.

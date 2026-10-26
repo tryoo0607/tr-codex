@@ -1,0 +1,34 @@
+---
+name: bmad-build
+description: 'Turns implementation work into working code, reviewed and verified. Use when the user delegates a feature, story, bug fix, or meaningful change; a bare story or issue link counts. Skip obvious, low-risk mechanical maintenance such as small ignore-file, typo-only, formatting-only, or configuration-hygiene edits. Explicit BMAD requests always qualify. Do not volunteer for user-directed interactive edits or version-control operations that only record existing work.'
+---
+
+## 선택적 전문 도구 연결
+
+BMAD가 요구, 계획, 구현과 완료 판단을 소유한다. 아래 도구는 해당 필요가 생겼을 때만 적용하고 별도 계획이나 작업 상태를 만들지 않는다. 원본 workflow를 렌더한 뒤에도 이 배포본 연결을 유지한다.
+
+| 필요한 작업 | 사용할 skill과 입력 | 반환할 근거 |
+|---|---|---|
+| 버전별 API 확인 | [find-docs](../find-docs/SKILL.md)에 라이브러리, 버전과 구체 질문 | 공식 문서 근거와 미확인 범위 |
+| UI 제작과 시각적 개편 | [frontend-design](../frontend-design/SKILL.md)에 기존 디자인 시스템, 요구와 대상 화면 | 구현 결과와 디자인 판단 |
+| UI 동작 및 렌더 확인 | [playwright-cli](../playwright-cli/SKILL.md)에 URL, 시나리오와 viewport | assertion, 관측, 오류와 산출물 위치 |
+| 코드 또는 이미지, 의존성, IaC 보안 검사 | [security-scan](../security-scan/SKILL.md)에 변경 대상과 검사 목적 | 발견 사항, 오류, 제외와 검사 범위 |
+| 구조를 설명하는 시각 자료 | [diagram-design](../diagram-design/SKILL.md)에 확인된 구조와 독자, 요청 형식 | 산출물 위치와 생략 내역 |
+
+각 대상의 SKILL.md로 진입해 필요한 절차를 적용한다. 도구가 없으면 설치를 자동 수행하지 말고 해당 검증의 미실행 범위를 반환한다. 다섯 skill을 매 작업마다 로드하지 않는다. 이 연결은 별도 에이전트 실행이나 native 자동 호출을 보장하지 않는다.
+
+
+Run the following command exactly once without changing the current working directory.
+
+Replace `{project-root}` with the nearest folder containing `_bmad/`, from the working directory upward.
+Replace `{skill-root}` with the absolute path to this skill's directory.
+
+```bash
+uv run --no-cache "{project-root}/_bmad/scripts/render_skill.py" --project-root "{project-root}" --skill "{skill-root}"
+```
+
+- When the invocation names a route (`oneshot` or `full`), append `--set workflow.route=<value>` to the command.
+- When the invocation names a review selection (`none`, `quick`, or `thorough`; "skip review" or "no review" mean `none`), append `--set workflow.review=<value>` to the command.
+- The command prints the skill's workflow: follow it. `HALT: <reason>`: report the reason and stop.
+- If the script does not exist, BMad is not set up in this project yet. Offer to set it up using `bmad` skill, then run the command again. If you do not have the `bmad` skill, offer to install it first.
+- On any other output or failure, including `uv` being unavailable, report the command output and stop. Do not run any workflow source directly.
