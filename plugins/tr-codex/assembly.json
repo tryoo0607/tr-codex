@@ -691,7 +691,7 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "59be076b8bbbf2ca6be2176e044b4d003f936ddd532e0215c552e29b3d33ba40",
+    ".codex-plugin/plugin.json": "0336d31512120a56122475167d760e617300de0ded0072a2eb33bde9d0431d50",
     ".mcp.json": "f4657b66814dbd47a3282d178a0876215dd217af42517483868e242db90f2eb2",
     "AGENTS.md": "c586de8fae8862d7cd435975149f1503131c265aae5d400e744744ced2aa399d",
     "runtimes/claude-mem/.claude-plugin/plugin.json": "ca23b534dd9e1bb7520d6019a29d5179b6c50e330c0ff853ddfce6e6148b546f",
