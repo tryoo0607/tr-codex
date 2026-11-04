@@ -1,7 +1,7 @@
 {
   "product": "codex",
   "build_contract": 1,
-  "source_revision": "5b0154c6b687e037950c508127c83c0e0992b023",
+  "source_revision": "573bac62abf6c7aba6731387ba9e05afd7f46d0f",
   "dependencies": [
     {
       "id": "find-docs",
@@ -693,8 +693,8 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "a44105eff31f29951ba92a317a97833c61f46301e008f0451d70da46be2f5ac0",
-    ".mcp.json": "f4657b66814dbd47a3282d178a0876215dd217af42517483868e242db90f2eb2",
+    ".codex-plugin/plugin.json": "40ff97995b5b3e67fb1f7b7e966041f34d59b7edd05a6bebc68dd4f2e965f35e",
+    ".mcp.json": "d6b710f5f0ee0ff64c791e41cf989df2d6f1d0e1dd67811e0f28d94b9472069b",
     "AGENTS.md": "c586de8fae8862d7cd435975149f1503131c265aae5d400e744744ced2aa399d",
     "runtimes/claude-mem/.claude-plugin/plugin.json": "ca23b534dd9e1bb7520d6019a29d5179b6c50e330c0ff853ddfce6e6148b546f",
     "runtimes/claude-mem/.codex-plugin/plugin.json": "474a469a6093b5bf9e12930500d8f82b0d55079e647341a569782ed2bd88899b",
