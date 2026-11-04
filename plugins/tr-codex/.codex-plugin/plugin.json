@@ -1,6 +1,6 @@
 {
   "name": "tr-codex",
-  "version": "0.6.0+codex.8c6651c22f76",
+  "version": "0.7.0+codex.5b0154c6b687",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json"
 }
