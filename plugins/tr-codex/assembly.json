@@ -1,7 +1,7 @@
 {
   "product": "codex",
   "build_contract": 1,
-  "source_revision": "458da8b89de7d853d6e79c596efad87b3e5f86ad",
+  "source_revision": "f6a05859b655389cd1a731ecad22d4184a31bb71",
   "dependencies": [
     {
       "id": "find-docs",
@@ -723,7 +723,7 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "6c7dede95164ff3783d32c211a7277137c5bb61bdde06767822b2da15f59e03b",
+    ".codex-plugin/plugin.json": "6870977da8a74ae65771cf096c20dc0a544b69759cbc91810eccb0ed35107572",
     ".mcp.json": "d6b710f5f0ee0ff64c791e41cf989df2d6f1d0e1dd67811e0f28d94b9472069b",
     "AGENTS.md": "c586de8fae8862d7cd435975149f1503131c265aae5d400e744744ced2aa399d",
     "runtimes/claude-mem/.claude-plugin/plugin.json": "ca23b534dd9e1bb7520d6019a29d5179b6c50e330c0ff853ddfce6e6148b546f",
@@ -1915,7 +1915,7 @@
     "skills/frontend-design/SKILL.md": "bd76c29a8d0de6b3b0edf3628b0759b1303b63ac47dcd1ad34ca256247364132",
     "skills/mem-search/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "skills/mem-search/SKILL.md": "2fdf00fbe1f829ebe37a7770654fdecadee985f590113935d1b9185e1039ff03",
-    "skills/orca-cli/SKILL.md": "4bf6cf987207c51d6d6ee5f4af0aba3ce774492d0b5fe415c1abff6d56bf1193",
+    "skills/orca-cli/SKILL.md": "ac71de0152415b02bbd230a84c46db5cdb01908cc34b17920459728d7a390314",
     "skills/orca-cli/upstream/GUIDE.md": "aa76f86505010096e8ea9edda1705a78aae7af45e54485f3fe0460664c1d9e4a",
     "skills/orca-cli/upstream/LICENSE": "ff1b611f80580d49f4b97e93a97b24eb050b0671b26b8afe16341fab699112f3",
     "skills/orca-update/SKILL.md": "c6ab91d4623ae1a487c6b831fb4040c29c8800e9dcea6988d38490420511a364",
@@ -1947,7 +1947,7 @@
     "skills/security-scan/references/trivy.md": "e75391ad18489e74ca6ff6151f8cd8efd5e28e2d4ba26329af27d744a9afcfcd",
     "skills/session/SKILL.md": "24d96c2ac49c5b08c94d400bcd75b67c184f1cb39cb84e1fd97738c66b97d869",
     "skills/session/references/continuity.md": "09d70d02b46e42b0530e2f6537e71fe39068493f7ec3f8de349dcb5114190a3f",
-    "skills/session/references/delegation.md": "abbfc908daa5add8b86618e39e3069f23c9227a8c74b3717e0882d46ef668a13",
+    "skills/session/references/delegation.md": "a441a839f522b9e0a921fbfb14fd342efbc427f27c74347912e8df09f3823814",
     "skills/session/references/recovery.md": "abd8f45f8113cf74091a413ed7419912e4ce3ade50f0be580c0e4cab0e43a21b",
     "skills/session/references/runtime-refresh.md": "f184d42867e83c2940b1b8b84b483ecdfedc6386125b6695a308e2664579b47b",
     "skills/skill-authoring/SKILL.md": "c30fdc6d0379979f54796c9d2e29fc728274c5e8529c6edc714a08544e1767c7",
