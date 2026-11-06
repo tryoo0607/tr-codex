@@ -1,7 +1,7 @@
 {
   "product": "codex",
   "build_contract": 1,
-  "source_revision": "f6a05859b655389cd1a731ecad22d4184a31bb71",
+  "source_revision": "68c7b89c4cd07077c85b57753b5e0dd7d44e1b7e",
   "dependencies": [
     {
       "id": "find-docs",
@@ -723,9 +723,9 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "6870977da8a74ae65771cf096c20dc0a544b69759cbc91810eccb0ed35107572",
+    ".codex-plugin/plugin.json": "d44488bfe18b4c71bf95dd4be429f4adf3b758b00d0fe0c9dd36c4055c69cfe9",
     ".mcp.json": "d6b710f5f0ee0ff64c791e41cf989df2d6f1d0e1dd67811e0f28d94b9472069b",
-    "AGENTS.md": "c586de8fae8862d7cd435975149f1503131c265aae5d400e744744ced2aa399d",
+    "AGENTS.md": "94cee7847e9f83798415cf39ba085ab7bf352d1fe020d5d86f032c62e9322e89",
     "runtimes/claude-mem/.claude-plugin/plugin.json": "ca23b534dd9e1bb7520d6019a29d5179b6c50e330c0ff853ddfce6e6148b546f",
     "runtimes/claude-mem/.codex-plugin/plugin.json": "474a469a6093b5bf9e12930500d8f82b0d55079e647341a569782ed2bd88899b",
     "runtimes/claude-mem/.mcp.json": "dbc7b9f4fe09cb17d7a118c5a259902b59a4b8020a4775b7bbe310ef3bc4f2c6",
@@ -1901,7 +1901,7 @@
     "skills/diagram-design/scripts/export_svg.py": "03e88d277386e2c9f48d9fcfc6a9f8e5e818a8949ac8ec458ac569e8ff4bc8ad",
     "skills/diagram-design/scripts/mermaid_extract.py": "fd176d5c616e49bc923fc271e0a14b022674e204d39b46673824db44f647b042",
     "skills/diagram-design/scripts/self_check.py": "444851f6e53f83d50920381df17cdd5f1b7a23cfba9c0ddda27786d78e53e2de",
-    "skills/document/SKILL.md": "bae16281882a7244796004fafc9df7a2760b558afcad8949e2457c31b1866f4d",
+    "skills/document/SKILL.md": "e1b08751b00f08f2cbdc3ca4b892981b943cf7504ab804a92ac8d7e488ccd902",
     "skills/document/references/implementations/local-markdown.md": "6ad128d5a1d15ca8909c1fa74e66643bf6b89deaf760db5728a7bdd28c66addf",
     "skills/document/references/implementations/tool-connections.md": "5d9d76c30cb39a4f1a26936ceddcca71086bd7e2182ca939575ef4ba767d32b6",
     "skills/document/references/types/context.md": "b171e8286fceacb50cd30853972c831324ed1facddb487edaa362cd7871f4520",
@@ -1915,7 +1915,7 @@
     "skills/frontend-design/SKILL.md": "bd76c29a8d0de6b3b0edf3628b0759b1303b63ac47dcd1ad34ca256247364132",
     "skills/mem-search/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "skills/mem-search/SKILL.md": "2fdf00fbe1f829ebe37a7770654fdecadee985f590113935d1b9185e1039ff03",
-    "skills/orca-cli/SKILL.md": "ac71de0152415b02bbd230a84c46db5cdb01908cc34b17920459728d7a390314",
+    "skills/orca-cli/SKILL.md": "8e34b0b472b1907204809bc319a3831d1b09bda92357e076e751d12cc24b0521",
     "skills/orca-cli/upstream/GUIDE.md": "aa76f86505010096e8ea9edda1705a78aae7af45e54485f3fe0460664c1d9e4a",
     "skills/orca-cli/upstream/LICENSE": "ff1b611f80580d49f4b97e93a97b24eb050b0671b26b8afe16341fab699112f3",
     "skills/orca-update/SKILL.md": "c6ab91d4623ae1a487c6b831fb4040c29c8800e9dcea6988d38490420511a364",
@@ -1934,18 +1934,18 @@
     "skills/playwright-cli/references/test-generation.md": "27ecb11ef647999bd7486695bb1aacc3682097e6bb5742804cb6c8769c2b5364",
     "skills/playwright-cli/references/tracing.md": "ef73e71bee792e341df9cd4f60529c929ade48b538ac76e033f4f20843e8dbda",
     "skills/playwright-cli/references/video-recording.md": "1c800b897824cb54394c34265d8ebffdbb530adfc8d612c5d798b667a1799f48",
-    "skills/profile-setup/SKILL.md": "a9e648a957a9f0e529415fb4c978a0abb0e8734816f27adc06c3bcc22166a8ec",
+    "skills/profile-setup/SKILL.md": "fcd954ef2b5db42b068d2fcedd5dc756b56a6e44bc5f0c06adfac42f339a8640",
     "skills/profile-setup/assets/config.example.toml": "5e86c451083a2e6bf8a2721f9a56501966c52d2d47495d72e7306f6020887a15",
     "skills/profile-setup/references/config-schema.md": "511932f2859441967791b866f4399ed3aeee542d40f0ada740b4aeb8a90e2d04",
     "skills/profile-setup/references/operations.md": "e77d8ffd0018e94dabed336f3b1b448f35ab8988a24b2d0e1c0d1bde096ccf9d",
-    "skills/project/SKILL.md": "3dcf6edaddcacdba29c5762eeef4390af4b75bf042b7a87228c6ca6fdfcb30c5",
+    "skills/project/SKILL.md": "b13210ac89cda472e0cac987a7a0338648ac31aac280b30550e1f4b2e622da33",
     "skills/project/references/configuration.md": "dbabeb4668cdc964bc457932acc0261675a3ab394e13cf88176340998483a384",
     "skills/project/references/management.md": "d0fe4b0d07514da0e21fb9f91757437f8e839fd1d37bc3660e4021e06605789c",
     "skills/project/references/structure.md": "38aab3801625a999136058e7ceba2cc79371eb8aaf774881f563476a4fc85a52",
     "skills/security-scan/SKILL.md": "002b769ebba4a394540d09b406739bfd6368a9b8f8f6e6f16c3649535f7fe6c1",
     "skills/security-scan/references/semgrep.md": "bdaafbcef5d5d55837124190efb19e4cae87b96d2570b4864e32eb5bdee3b164",
     "skills/security-scan/references/trivy.md": "e75391ad18489e74ca6ff6151f8cd8efd5e28e2d4ba26329af27d744a9afcfcd",
-    "skills/session/SKILL.md": "24d96c2ac49c5b08c94d400bcd75b67c184f1cb39cb84e1fd97738c66b97d869",
+    "skills/session/SKILL.md": "770cf0a01d3a21b69bc6c0a5e56b1c4109ed0d5a64d85e13d7b407f9dea800a7",
     "skills/session/references/continuity.md": "09d70d02b46e42b0530e2f6537e71fe39068493f7ec3f8de349dcb5114190a3f",
     "skills/session/references/delegation.md": "a441a839f522b9e0a921fbfb14fd342efbc427f27c74347912e8df09f3823814",
     "skills/session/references/recovery.md": "abd8f45f8113cf74091a413ed7419912e4ce3ade50f0be580c0e4cab0e43a21b",
@@ -1956,7 +1956,7 @@
     "skills/skill-authoring/references/creator.md": "6e69d9b398d1e16d5e7db181f0bf1f48115407e9071226fea8b2cf83d52a8cc9",
     "skills/skill-authoring/references/delivery.md": "def88196fad871369bf935dd2a879e43ce9b020287dfc4577f6233948b0f50c2",
     "skills/skill-authoring/references/include.md": "24bcd487ac61bfd73b9b51e1237a5d87f68256dc343978f5c882faa41a977bed",
-    "skills/skill-authoring/references/local-rules.md": "5a7ef13d1ca6cfc4f0158538271c3f09cf50d95cdc26234118b124f5c84b770f",
+    "skills/skill-authoring/references/local-rules.md": "0a3676ead1e8a24e8db69d52ea625e80d0aa0685b07ed4c99b08398e1d4cd1f4",
     "skills/skill-authoring/references/reference-authoring.md": "496e70ceb76848d1559460fa6fe066633e8ac949300edc6081c09c3f41ee6b60",
     "skills/skill-authoring/scripts/context_check.py": "df47e1fde4d2f42a8266edda8df8231403c9a6f3519f38455f64f72483449fd9",
     "skills/skill-creator/LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
@@ -2014,7 +2014,7 @@
     "skills/worktrunk/upstream/reference/tips-patterns.md": "33a53cfe82f419503b295f91312a30e06dc2770d55590180f2cc14fd4d9c7748",
     "skills/worktrunk/upstream/reference/troubleshooting.md": "669a3ea0aeed18d0b982f5be1181e9e74ecb8000ca47b4c0a55552e1f7099b5f",
     "skills/worktrunk/upstream/reference/worktrunk.md": "8066d6857659dd1c4f021df2549e2f7f9e726515ba5ab058aa4ce3b1ca4b0f17",
-    "workflow.md": "eaad164d5bb03222982481fbff654c7997bb154662c203de3eb7915d16aff444"
+    "workflow.md": "46475097dd010b77f5e0da296cdcc2ef06656c3ab7854ca8aa2867e38e827a2c"
   },
   "plugin_hooks": []
 }
