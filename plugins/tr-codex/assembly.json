@@ -1,7 +1,7 @@
 {
   "product": "codex",
   "build_contract": 1,
-  "source_revision": "68c7b89c4cd07077c85b57753b5e0dd7d44e1b7e",
+  "source_revision": "0549c54852a1369e951342d8bff9ae6f4bbde0ee",
   "dependencies": [
     {
       "id": "find-docs",
@@ -723,9 +723,10 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "d44488bfe18b4c71bf95dd4be429f4adf3b758b00d0fe0c9dd36c4055c69cfe9",
+    ".codex-plugin/plugin.json": "8c953749d3150f474b1c65ce65daefb2776d6ffb3c52572de145d3b616302a6f",
     ".mcp.json": "d6b710f5f0ee0ff64c791e41cf989df2d6f1d0e1dd67811e0f28d94b9472069b",
-    "AGENTS.md": "94cee7847e9f83798415cf39ba085ab7bf352d1fe020d5d86f032c62e9322e89",
+    "AGENTS.md": "561aafb44357feadfcf33539236c8e0ed39f90da8864bdcd6452fb4a8a1ad8f8",
+    "hooks/hooks.json": "7f928c67e48970774b803c0b0d2c9715381058f7cf19e45c57492338dd9c4140",
     "runtimes/claude-mem/.claude-plugin/plugin.json": "ca23b534dd9e1bb7520d6019a29d5179b6c50e330c0ff853ddfce6e6148b546f",
     "runtimes/claude-mem/.codex-plugin/plugin.json": "474a469a6093b5bf9e12930500d8f82b0d55079e647341a569782ed2bd88899b",
     "runtimes/claude-mem/.mcp.json": "dbc7b9f4fe09cb17d7a118c5a259902b59a4b8020a4775b7bbe310ef3bc4f2c6",
@@ -925,8 +926,10 @@
     "runtimes/claude-mem/ui/work-view/icons.svg": "b45fa506195cfcdef406ba9f0c77b36ddc1a7c224040926ec70abc2fdea7b93a",
     "runtimes/claude-mem/ui/work-view/index.html": "eb3559e3d827c7e0c5b1ce38dbbb6dee7a453b756b65c5eeba1177ac8c80380b",
     "scripts/assets.py": "1eb07e00abbcfeffa235ef64a27402481c39226121fc1eb8d84191cb5be1ed82",
-    "scripts/dev-tools.toml": "4e01dba78523b68309dec5d89595436170ce834a6b8c300a37c9bb9e80d15085",
+    "scripts/commit-guard.py": "6c312440bb5622dfa6a9b102f5abe2afc3001519c0106d9d48e6e8a3205a3df9",
+    "scripts/dev-tools.toml": "fc4466472416d4da3910187f1e8c68cbdcda70461e146565eeba653edc208f9c",
     "scripts/git-excludes.py": "e8e337956c3a11c1a2c4e4c3b53a2223af3bce5fd002cbc3011801661588f37c",
+    "scripts/git-guard-install.py": "2cfeee5ba015c3d567c85ae431441ad7cfac041385432309d3f8f547f83f9f06",
     "scripts/llm-wiki": "7ae1d608444d52707edad2082e913bb28463e2e6aeacdb7305d694db0d295706",
     "scripts/llm-wiki-session": "5fc5f83b4365809a703d42afc26702a648aff45edb31bdee11bb044c38060b6f",
     "scripts/records.py": "34bd2c0ed321cf04fafbc2a98647afc1281ba104b76340d3f5eca11218546106",
@@ -1942,7 +1945,8 @@
     "skills/project/references/configuration.md": "dbabeb4668cdc964bc457932acc0261675a3ab394e13cf88176340998483a384",
     "skills/project/references/management.md": "d0fe4b0d07514da0e21fb9f91757437f8e839fd1d37bc3660e4021e06605789c",
     "skills/project/references/structure.md": "38aab3801625a999136058e7ceba2cc79371eb8aaf774881f563476a4fc85a52",
-    "skills/security-scan/SKILL.md": "002b769ebba4a394540d09b406739bfd6368a9b8f8f6e6f16c3649535f7fe6c1",
+    "skills/security-scan/SKILL.md": "0a931db10fc5acb4055ae3690f95df0cf639c3adc5f0f51300702e0cdee2f6ec",
+    "skills/security-scan/references/gitleaks.md": "82a04e7a1c0870ec9b5663b9993e0cf64c1139e1f990e9921205000c0b239938",
     "skills/security-scan/references/semgrep.md": "bdaafbcef5d5d55837124190efb19e4cae87b96d2570b4864e32eb5bdee3b164",
     "skills/security-scan/references/trivy.md": "e75391ad18489e74ca6ff6151f8cd8efd5e28e2d4ba26329af27d744a9afcfcd",
     "skills/session/SKILL.md": "770cf0a01d3a21b69bc6c0a5e56b1c4109ed0d5a64d85e13d7b407f9dea800a7",
@@ -1956,7 +1960,7 @@
     "skills/skill-authoring/references/creator.md": "6e69d9b398d1e16d5e7db181f0bf1f48115407e9071226fea8b2cf83d52a8cc9",
     "skills/skill-authoring/references/delivery.md": "def88196fad871369bf935dd2a879e43ce9b020287dfc4577f6233948b0f50c2",
     "skills/skill-authoring/references/include.md": "24bcd487ac61bfd73b9b51e1237a5d87f68256dc343978f5c882faa41a977bed",
-    "skills/skill-authoring/references/local-rules.md": "0a3676ead1e8a24e8db69d52ea625e80d0aa0685b07ed4c99b08398e1d4cd1f4",
+    "skills/skill-authoring/references/local-rules.md": "ca07e6ffa60a9a88bd68a3a44b80670a5da140dbed11d432dcaba7c2ea1a2eb6",
     "skills/skill-authoring/references/reference-authoring.md": "496e70ceb76848d1559460fa6fe066633e8ac949300edc6081c09c3f41ee6b60",
     "skills/skill-authoring/scripts/context_check.py": "df47e1fde4d2f42a8266edda8df8231403c9a6f3519f38455f64f72483449fd9",
     "skills/skill-creator/LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
@@ -2016,5 +2020,7 @@
     "skills/worktrunk/upstream/reference/worktrunk.md": "8066d6857659dd1c4f021df2549e2f7f9e726515ba5ab058aa4ce3b1ca4b0f17",
     "workflow.md": "46475097dd010b77f5e0da296cdcc2ef06656c3ab7854ca8aa2867e38e827a2c"
   },
-  "plugin_hooks": []
+  "plugin_hooks": [
+    "PreToolUse"
+  ]
 }
