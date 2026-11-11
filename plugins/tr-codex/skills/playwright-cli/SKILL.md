@@ -3,6 +3,8 @@ name: playwright-cli
 description: Automate browser interactions, test web pages and work with Playwright tests.
 allowed-tools: Bash(playwright-cli:*) Bash(npx playwright:*) Bash(npx --no-install playwright:*)
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 
 ## 이 배포본의 연결
 

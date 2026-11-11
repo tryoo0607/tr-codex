@@ -2,6 +2,12 @@
 name: bmad-prd
 description: Create, update, or validate a PRD. Use when the user wants help producing, editing, or validating a PRD
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
+
+## 요구와 합의 연결
+
+작성, 갱신 또는 검증 시 해당 PRD, 기존 합의와 출처, 최신 사용자 정정을 소비한다. 중요한 요구 해석, 사용 흐름의 순서나 책임 변경, 권한 충돌은 [작업 흐름](../../workflow.md)의 '요구 변경과 전환'을 적용한다. 검증에서는 반영한 요구와 출처, 남은 가정과 미결을 PRD 및 검증 결과와 대조하며 실패와 미실행 판정에는 '검증과 실패'를 적용한다. 원본 PRD 작업과 검증 절차를 유지하며 렌더 후에도 이 연결을 적용한다.
 
 ## 선택적 공동 작성 연결
 

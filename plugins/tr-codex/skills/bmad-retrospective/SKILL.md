@@ -3,6 +3,8 @@ name: bmad-retrospective
 description: >-
   Review a finished epic folder in the ticket tree against the evidence it left behind — the epic file, each ticket's story file and plan, diffs, commits — and produce a retrospective with sourced findings, action items, and an acceptance decision. Use when the user says "run a retrospective" or "lets retro the epic [epic]". Supports -H/--headless
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 
 Run the following command exactly once without changing the current working directory.
 

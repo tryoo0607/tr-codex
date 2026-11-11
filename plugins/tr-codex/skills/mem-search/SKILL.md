@@ -3,6 +3,8 @@ name: mem-search
 description: >-
   Smart search (default). Search claude-mem's persistent cross-session memory database in three steps: search, timeline, then selected get_observations. Use when user asks "did we already solve this?", "how did we do X last time?", or needs work from previous sessions.
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 
 # Smart Search (Default)
 

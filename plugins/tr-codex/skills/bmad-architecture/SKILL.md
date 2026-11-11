@@ -2,6 +2,8 @@
 name: bmad-architecture
 description: 'Work out and record the architecture decisions that keep separately built parts of a system consistent, in a short architecture document. Creates, updates, or validates one; works from a ticket file, with an existing codebase or architecture document beside it. Use when the user says "create the architecture", "create technical architecture", "architecture spine", or "create a solution design"'
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 
 ## 선택적 근거와 도식 연결
 

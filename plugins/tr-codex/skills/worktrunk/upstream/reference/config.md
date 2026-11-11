@@ -1,3 +1,5 @@
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 # wt config
 
 Manage user & project configs. Includes shell integration, hooks, and saved state.

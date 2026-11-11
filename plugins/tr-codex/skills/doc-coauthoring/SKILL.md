@@ -2,12 +2,14 @@
 name: doc-coauthoring
 description: Guide users through a structured workflow for co-authoring documentation. Use when user wants to write documentation, proposals, technical specs, decision docs, or similar structured content. This workflow helps users efficiently transfer context, refine content through iteration, and verify the doc works for readers. Use for collaborative substantive documents when no existing business skill owns the requested artifact. README work stays with github-readme-generator; file search and record storage stay with document. Local drafts do not imply publishing.
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 
 ## 적용 범위와 검증
 
 기존 업무 skill이 PRD, 설계 결정 등 산출물의 요구와 검증을 소유하면 그 담당을 유지하고 공동 작성 과정에만 이 skill을 선택 적용한다. 문서 형식만 보고 전체 절차를 강제하지 않는다. 독자, 필요한 설명 깊이, 근거, 미확인과 원래 요구를 보존한다. 독자 검토는 이해도와 모호함 검사이며 사실 검증을 대신하지 않는다. 중요한 사실과 API는 원문 근거를 별도 확인하고 실행하지 않은 독립 독자 검토를 통과로 보고하지 않는다. 가용 도구나 독립 검토자가 없으면 수동 검토와 남은 한계를 밝힌다.
 
-원본: anthropics/skills, revision dbd4588f9e1033efb41dad4bef2f7947c8993d44. 원본 안내는 UPSTREAM-README.md에 보존한다. 이 skill의 개별 라이선스 명시는 확인되지 않았으며 Apache-2.0으로 단정하지 않는다.
+원본: anthropics/skills, revision dbd4588f9e1033efb41dad4bef2f7947c8993d44. 원본 README는 UPSTREAM-README.md로 포함하며 상대 링크를 고정 revision의 upstream 링크로 보정한다. 이 skill의 개별 라이선스 명시는 확인되지 않았으며 Apache-2.0으로 단정하지 않는다.
 
 # Doc Co-Authoring Workflow
 

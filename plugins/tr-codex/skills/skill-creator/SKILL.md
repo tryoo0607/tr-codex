@@ -4,6 +4,8 @@ description: Guide for creating effective skills. This skill should be used when
 metadata:
   short-description: Create or update a skill
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 
 skill-authoring이 호출한 경우 일반 저작 절차를 제공하고 자체 규격은 호출자가 적용한다. script는 이 SKILL.md의 부모 디렉터리를 확인해 실행한다. agents/openai.yaml 생성과 초기화는 요청에 필요한 경우만 수행한다. 원본 지침 적용은 별도 격리 실행이나 자동 반환을 뜻하지 않는다.
 

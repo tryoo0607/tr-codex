@@ -2,6 +2,8 @@
 name: bmad-prfaq
 description: "Test a product concept with Amazon's Working Backwards method: write the press release for the finished product first, then answer hard customer and stakeholder questions, ending in a complete PRFAQ document. Use when the user requests to 'create a PRFAQ', 'work backwards', or 'run the PRFAQ challenge'"
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
 
 ## 선택적 공동 작성 연결
 

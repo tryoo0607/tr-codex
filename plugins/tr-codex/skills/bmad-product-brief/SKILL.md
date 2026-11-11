@@ -2,6 +2,12 @@
 name: bmad-product-brief
 description: Create, update, or validate a product brief. Use when the user wants help producing, editing, or validating a brief
 ---
+> tr-kit-source 변경 고지: 이 파일은 조립 시 로컬 binding으로 변경했습니다. 출처와 변환 내역은 플러그인 루트의 assembly.json을 확인합니다.
+
+
+## 요구와 합의 연결
+
+Discovery와 요구 정리에서 기존 입력, 최신 사용자 정정, 합의와 미결을 소비한다. 중요한 해석, 선택 축소 또는 권한 충돌이 있으면 [작업 흐름](../../workflow.md)의 '요구 변경과 전환'만 적용한다. Finalize에서는 다음 담당이 소비할 목적, 제약, 가정과 미결 및 자료 포인터를 기존 산출물에 남기고 원본 기록과 검증 결과를 확인한다. 원본 Discovery, Fast/Coaching, memlog와 Finalize 절차는 유지하며 렌더 후에도 이 연결을 적용한다.
 
 ## 선택적 공동 작성 연결
 
