@@ -1,5 +1,5 @@
 # tr-codex
 
-Generated from [tryoo0607/tr-kit-source](https://github.com/tryoo0607/tr-kit-source) commit `f1ac29295f6ebe43a6e00ef354bb9467dab07def`. Do not edit generated files.
+Generated from [tryoo0607/tr-kit-source](https://github.com/tryoo0607/tr-kit-source) commit `2793b542c943a7cff18dcddbddbaa1a15b6e6eef`. Do not edit generated files.
 
 Marketplace: `tryoo0607/tr-codex`; plugin: `tr-codex@tr-codex`.
