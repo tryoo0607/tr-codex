@@ -1,7 +1,7 @@
 {
   "product": "codex",
   "build_contract": 1,
-  "source_revision": "7004cc9efe4d031d662530dc540cfeb836099091",
+  "source_revision": "b0568e620f6a421107f495d377c76b49942a8aee",
   "dependencies": [
     {
       "id": "find-docs",
@@ -1626,7 +1626,7 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "387c1c6fd319e1bf61ad77b04f5183ea89cdd1631c095d60748378bc1fe4ca79",
+    ".codex-plugin/plugin.json": "d9ef20852c54a82331f1174f10fdb9c9eab0e7ecc7362a59fc42b19898e95a95",
     ".mcp.json": "d6b710f5f0ee0ff64c791e41cf989df2d6f1d0e1dd67811e0f28d94b9472069b",
     "AGENTS.md": "eb4168db83ecb6904f57481345aca63e0d565e84e7f85cfceb6c562205a534dc",
     "hooks/hooks.json": "7bdcf5f51ef4394eb21fdea337cb1b325c59943feb0905d8d418a238b910d87c",
@@ -2873,8 +2873,8 @@
     "skills/session/references/continuity.md": "d15737dc691281d262cf4ed42410bca2217193661958958a11792ced1b44f1ac",
     "skills/session/references/delegation.md": "a441a839f522b9e0a921fbfb14fd342efbc427f27c74347912e8df09f3823814",
     "skills/session/references/recovery.md": "abd8f45f8113cf74091a413ed7419912e4ce3ade50f0be580c0e4cab0e43a21b",
-    "skills/session/references/runtime-refresh.md": "9b2228d2424564b08d10668b6b30690ca29a559c3df5e3867e4b6e0f11dfc387",
-    "skills/session/scripts/runtime_refresh.py": "bf7b682d26ea42a773037df8a10219c243c5bb9715ab690253c5fdd3bb67796c",
+    "skills/session/references/runtime-refresh.md": "76722733ee973c390c3c30b050f9872fd79af0ad8e64b9030525e193d7252bc4",
+    "skills/session/scripts/runtime_refresh.py": "aa74d41c4a693babb1a700a0b08e095704f69a1de3068bc2545f180efc4f634e",
     "skills/skill-authoring/SKILL.md": "c30fdc6d0379979f54796c9d2e29fc728274c5e8529c6edc714a08544e1767c7",
     "skills/skill-authoring/references/basic.md": "348dddf60e4cb5e884ab278cd1a31174e778066b8d08f943e2524c8a4f000d3f",
     "skills/skill-authoring/references/context-review.md": "f0ca012b5c2c400b823deb109c5203be94fb0c8f5377cec4ad5bf3c63cd0fc7d",
