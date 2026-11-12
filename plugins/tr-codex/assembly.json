@@ -1,7 +1,7 @@
 {
   "product": "codex",
   "build_contract": 1,
-  "source_revision": "636815adc324eb31f1134cfb95d1b138c9f342ac",
+  "source_revision": "f1ac29295f6ebe43a6e00ef354bb9467dab07def",
   "dependencies": [
     {
       "id": "find-docs",
@@ -1626,9 +1626,9 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "6852cc91e2696d4dd5a5c2fc4b3fd171d4fcbb436598678f8f9e09c9b06947f6",
+    ".codex-plugin/plugin.json": "9d569cb601314838569ee4369462752852dec99bdca4591eb663d027c9b8c1f4",
     ".mcp.json": "d6b710f5f0ee0ff64c791e41cf989df2d6f1d0e1dd67811e0f28d94b9472069b",
-    "AGENTS.md": "f12aadd5fe5ef962cd501e3a0a7c3a77922602e6bf20b005bea69a688513dbd9",
+    "AGENTS.md": "eb4168db83ecb6904f57481345aca63e0d565e84e7f85cfceb6c562205a534dc",
     "hooks/hooks.json": "7f928c67e48970774b803c0b0d2c9715381058f7cf19e45c57492338dd9c4140",
     "runtimes/claude-mem/.claude-plugin/plugin.json": "ca23b534dd9e1bb7520d6019a29d5179b6c50e330c0ff853ddfce6e6148b546f",
     "runtimes/claude-mem/.codex-plugin/plugin.json": "474a469a6093b5bf9e12930500d8f82b0d55079e647341a569782ed2bd88899b",
@@ -2207,7 +2207,7 @@
     "skills/bmad-customize/scripts/list_customizable_skills.py": "5fcde79fd65b462b264b818c288af9fa9589748ee15066f636612af8c1f6cc5e",
     "skills/bmad-customize/scripts/tests/test_list_customizable_skills.py": "13c2edf3055ea05481704348f3245f09edf605809c88120deb810ddfd0002cb4",
     "skills/bmad-deep-recon/LICENSE": "0aa79baf6328b4a1e694ce10a12ffc36d7666554da128dff0e8fcda0fc536a66",
-    "skills/bmad-deep-recon/SKILL.md": "ccad62532dfaa2cf3d7f6ac0ce7b1a76d17126cde19e4f74fd026ff8c1206dc3",
+    "skills/bmad-deep-recon/SKILL.md": "bd30af0ae2adf5f025031821f4b4eb4c70f4da77aa1bf3e152495a895b3ce3b2",
     "skills/bmad-deep-recon/assets/codebase.template.md": "c0e6ffed5d15cbb71503e15d5d7f0c13252a913ae5744f5e51ca1ff328903909",
     "skills/bmad-deep-recon/assets/research.template.md": "87d7cfa85fa5036b5a309b7bfb88f7934f50bb81f3cff02d2b49b4c7345cfc38",
     "skills/bmad-deep-recon/bmod.toml": "6b44fa7184345f8465176cc23ff7ff1c9718fc100d377b9e8743dabbe82eebda",
