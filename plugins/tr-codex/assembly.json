@@ -1,7 +1,7 @@
 {
   "product": "codex",
   "build_contract": 1,
-  "source_revision": "2793b542c943a7cff18dcddbddbaa1a15b6e6eef",
+  "source_revision": "7004cc9efe4d031d662530dc540cfeb836099091",
   "dependencies": [
     {
       "id": "find-docs",
@@ -1626,7 +1626,7 @@
     }
   ],
   "files": {
-    ".codex-plugin/plugin.json": "66059ca8d1ac4d46dd59bbfa56bad92c1ee44996586e22688afe756147c9455e",
+    ".codex-plugin/plugin.json": "387c1c6fd319e1bf61ad77b04f5183ea89cdd1631c095d60748378bc1fe4ca79",
     ".mcp.json": "d6b710f5f0ee0ff64c791e41cf989df2d6f1d0e1dd67811e0f28d94b9472069b",
     "AGENTS.md": "eb4168db83ecb6904f57481345aca63e0d565e84e7f85cfceb6c562205a534dc",
     "hooks/hooks.json": "7bdcf5f51ef4394eb21fdea337cb1b325c59943feb0905d8d418a238b910d87c",
@@ -2866,15 +2866,15 @@
     "skills/running-instrumented-tests-with-androidjunit4/LICENSE": "8b9740f4d6752dfd304ee0ea9efab58eb004fdbc722eadee167bc28791844fbf",
     "skills/running-instrumented-tests-with-androidjunit4/SKILL.md": "55b99062fe683d9e5f4e91062c4c0889f5ca8da5ed0b1a7b0c51df27e562e419",
     "skills/security-scan/SKILL.md": "0a931db10fc5acb4055ae3690f95df0cf639c3adc5f0f51300702e0cdee2f6ec",
-    "skills/security-scan/references/gitleaks.md": "0c3aa45880558f04b86dee6acf1d0119cd7c7a03a89522c61b1e8f0fc4973b81",
+    "skills/security-scan/references/gitleaks.md": "5e82c2a697c46473a74659e1a0c3704c88066eaa8cf493f3254bf3da69872c47",
     "skills/security-scan/references/semgrep.md": "bdaafbcef5d5d55837124190efb19e4cae87b96d2570b4864e32eb5bdee3b164",
     "skills/security-scan/references/trivy.md": "e75391ad18489e74ca6ff6151f8cd8efd5e28e2d4ba26329af27d744a9afcfcd",
     "skills/session/SKILL.md": "77de9fadb2c013ec33795840ac889982cfbeba43880a976ac6c361ea0d80bd58",
     "skills/session/references/continuity.md": "d15737dc691281d262cf4ed42410bca2217193661958958a11792ced1b44f1ac",
     "skills/session/references/delegation.md": "a441a839f522b9e0a921fbfb14fd342efbc427f27c74347912e8df09f3823814",
     "skills/session/references/recovery.md": "abd8f45f8113cf74091a413ed7419912e4ce3ade50f0be580c0e4cab0e43a21b",
-    "skills/session/references/runtime-refresh.md": "619f8a8f48f67db143bb1a7dfd0b1de6832dee480e188fd01d6534cb6893584d",
-    "skills/session/scripts/runtime_refresh.py": "325845ad1c286fe72f4e2a805fbdab6c0539e33c74c9b39c4663d548f93aae39",
+    "skills/session/references/runtime-refresh.md": "9b2228d2424564b08d10668b6b30690ca29a559c3df5e3867e4b6e0f11dfc387",
+    "skills/session/scripts/runtime_refresh.py": "bf7b682d26ea42a773037df8a10219c243c5bb9715ab690253c5fdd3bb67796c",
     "skills/skill-authoring/SKILL.md": "c30fdc6d0379979f54796c9d2e29fc728274c5e8529c6edc714a08544e1767c7",
     "skills/skill-authoring/references/basic.md": "348dddf60e4cb5e884ab278cd1a31174e778066b8d08f943e2524c8a4f000d3f",
     "skills/skill-authoring/references/context-review.md": "f0ca012b5c2c400b823deb109c5203be94fb0c8f5377cec4ad5bf3c63cd0fc7d",
