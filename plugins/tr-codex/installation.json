@@ -2,12 +2,12 @@
   "schema_version": 1,
   "product": "codex",
   "name": "tr-codex",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "profile": "guarded",
   "files": [
     {
       "path": ".codex-plugin/plugin.json",
-      "sha256": "e89235abfe2a98274aee7f70dd7a070bcabee89ecc7f115d8484c8317c94b2ec"
+      "sha256": "cb6ee1cd3018ce0108a3c1e9f25d04fac90386d747187d3340ada38ad7c660ea"
     },
     {
       "path": "INSTALL.md",
@@ -495,15 +495,15 @@
     },
     {
       "path": "common/base/skills/session/references/session-restart.md",
-      "sha256": "b78edac38b450b6b9697e1c9905932d5dcfb7356bea3b65b3c917d930a063ae7"
+      "sha256": "460cede6c051093236ff4e5046348ba28a5b634d0d26a3855a66b2f04cbb5cd8"
     },
     {
       "path": "common/base/skills/session/scripts/runtime_refresh.py",
-      "sha256": "c4eef4dd093773a105fc02788ad7b2c194100339d8632283c83a0b60d5e591c3"
+      "sha256": "b0981b05eabf645f75851e92bd7c21dd9029abd5262e6509ee37610f9a680784"
     },
     {
       "path": "common/base/skills/session/scripts/session_restart.py",
-      "sha256": "1ebf884c0530ee030b6fc87c7ad84a788f8e747caedb1be77106477a4d7bfd07"
+      "sha256": "aea5d85fc00cb0ccbb340f9b1471cdfb4c41e8fd80326de4a7aaaaf1b1e492fc"
     },
     {
       "path": "common/base/skills/structuring-a-compose-test/SKILL.md",
