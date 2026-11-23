@@ -1,6 +1,6 @@
 {
   "name": "tr-codex",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "tr-kit common workflows and policy connections",
   "skills": "./common/base/skills/",
   "hooks": "./hooks/hooks.json",
