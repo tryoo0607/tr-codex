@@ -1,13 +1,34 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/scripts/plugin-runtime.py\" context --product codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": ".*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/commit-guard.py\" agent --product codex",
+            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/adapters/codex/scripts/secret_guard.py\" --event PreToolUse",
             "timeout": 45
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|exec_command|apply_patch|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/scripts/plugin-runtime.py\" upstream --product codex --event PreToolUse",
+            "timeout": 8
           }
         ]
       }
@@ -18,8 +39,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${PLUGIN_ROOT}/scripts/commit-guard.py\" output --product codex",
+            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/adapters/codex/scripts/secret_guard.py\" --event PostToolUse",
             "timeout": 45
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/scripts/plugin-runtime.py\" upstream --product codex --event PostToolUse",
+            "timeout": 8
           }
         ]
       }

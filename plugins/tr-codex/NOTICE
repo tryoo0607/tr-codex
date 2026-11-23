@@ -1,0 +1,18 @@
+tr-kit-source
+
+Own tr-kit source remains under the repository's Apache License 2.0.
+This package does not contain external skill bodies, runtimes or transformed
+copies. Official external installations retain their own licenses and notices.
+
+The skill-authoring lineage attribution is retained:
+OutlineDriven/odin-claude-plugin, writing-skills
+Revision c5260cfa20a297e29270e6a3191c4b375ad471f5, Apache License 2.0
+https://github.com/OutlineDriven/odin-claude-plugin
+
+The above work identifies mattpocock/skills as its lineage:
+Revision 6654f6b60cd9d5be8b54c6fafe44346dabeb3b76, MIT License
+Copyright (c) 2026 Matt Pocock
+https://github.com/mattpocock/skills
+
+These credits preserve the prior repository attribution. They do not claim
+that those external implementations are bundled in this rebuilt package.
