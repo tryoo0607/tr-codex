@@ -766,19 +766,23 @@
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/references/runtime-refresh.md",
-      "sha256": "dcae96d267e4c84f78733772053e3b4176eb85039f6d928629c4466bce3d3fc3"
+      "sha256": "4a3521ab146b8efbaae495b8539028464953dddc0ed6955f09d7ea7917611e4c"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/references/session-restart.md",
-      "sha256": "c9cef0a2fc109b40a6846fc12040ba08995942ad8a60825d8c9e38567619729d"
+      "sha256": "311618f24be341f613c5da8ef1376be18798cba967ba271949740fa35badbf43"
+    },
+    {
+      "path": "plugins/tr-codex/common/base/skills/session/scripts/claude_live_sessions.py",
+      "sha256": "df3e74a5a8fed4aa17f8ff5021edd048f55a6a330d385b8bc9d9e61903bbf31f"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/scripts/runtime_refresh.py",
-      "sha256": "8fdc0a20a31086b7d45b1b04171876e1ca381734cdfc87d38d342bf30cfe5086"
+      "sha256": "b2ef21cfe29ed589f5f6c707c81602232c35953536bb2b78692a424b5de76b2d"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/scripts/session_restart.py",
-      "sha256": "5ad4f41b5e4a92449bcfa2908752412843fb93a80695674914d4192ead910b1f"
+      "sha256": "892198942e56df04fa4c239e0f9a210bcce237e28bf29f102e7180b797d1df38"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/structuring-a-compose-test/SKILL.md",
@@ -1038,7 +1042,7 @@
     },
     {
       "path": "plugins/tr-codex/.codex-plugin/plugin.json",
-      "sha256": "fb8640bbee093241f6a5379b55721573fc43165c5554a3f001b5e78b2ec24c6e"
+      "sha256": "6639232508f917763571c0f092f375a253d52eca402cb1741b91fcd9b803ae8d"
     },
     {
       "path": "plugins/tr-codex/hooks/hooks.json",
@@ -1046,7 +1050,7 @@
     },
     {
       "path": "plugins/tr-codex/installation.json",
-      "sha256": "3d4b25c41f69861aed09e57596887fce6a8b66454d022931d1be201f99f2ff97"
+      "sha256": "c265d6f43987c0bb336c002d1a1c4a485c6816fada605f5160b2b322e1c730f4"
     },
     {
       "path": ".agents/plugins/marketplace.json",
@@ -1054,7 +1058,7 @@
     },
     {
       "path": "release.json",
-      "sha256": "e1f43a5fefebb55b9fe273bc57b0595fc2bd11fdaa57089bb1186e67eabc300a"
+      "sha256": "d7fdbee7c5f4d2e8ccc8a25ac68c4dbc5c24b4e7be44175aa40bb56ca69e222e"
     }
   ],
   "limits": "Own-source bundle only. Native discovery, trust and installation are not certified."
