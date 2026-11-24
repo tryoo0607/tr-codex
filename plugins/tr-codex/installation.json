@@ -2,12 +2,12 @@
   "schema_version": 1,
   "product": "codex",
   "name": "tr-codex",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "profile": "guarded",
   "files": [
     {
       "path": ".codex-plugin/plugin.json",
-      "sha256": "6639232508f917763571c0f092f375a253d52eca402cb1741b91fcd9b803ae8d"
+      "sha256": "66e48dac9b5200511261c5ce1b8aad41adcdae044dff38444591f5e29838e0af"
     },
     {
       "path": "INSTALL.md",
@@ -491,11 +491,11 @@
     },
     {
       "path": "common/base/skills/session/references/runtime-refresh.md",
-      "sha256": "4a3521ab146b8efbaae495b8539028464953dddc0ed6955f09d7ea7917611e4c"
+      "sha256": "5962940270757ccba1a407330903f297ba5029c631ecaa82deec8fbf35c2818a"
     },
     {
       "path": "common/base/skills/session/references/session-restart.md",
-      "sha256": "311618f24be341f613c5da8ef1376be18798cba967ba271949740fa35badbf43"
+      "sha256": "123358ad3244b70f22b79a695c07fe01d0bfaf3779999b26649c4514ab0c2666"
     },
     {
       "path": "common/base/skills/session/scripts/claude_live_sessions.py",
@@ -503,7 +503,7 @@
     },
     {
       "path": "common/base/skills/session/scripts/runtime_refresh.py",
-      "sha256": "b2ef21cfe29ed589f5f6c707c81602232c35953536bb2b78692a424b5de76b2d"
+      "sha256": "191e965be05b3f3efc29948c672184487c5acf093db499e2d38a9249e4e67bc8"
     },
     {
       "path": "common/base/skills/session/scripts/session_restart.py",
