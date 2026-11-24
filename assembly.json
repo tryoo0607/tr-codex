@@ -770,7 +770,7 @@
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/references/session-restart.md",
-      "sha256": "460cede6c051093236ff4e5046348ba28a5b634d0d26a3855a66b2f04cbb5cd8"
+      "sha256": "32b4e105c102e7dae9d850b36e9b7d7edd5522256dced67de54a61c575a56b4a"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/scripts/runtime_refresh.py",
@@ -778,7 +778,7 @@
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/scripts/session_restart.py",
-      "sha256": "aea5d85fc00cb0ccbb340f9b1471cdfb4c41e8fd80326de4a7aaaaf1b1e492fc"
+      "sha256": "cbd4a2eaec1c72b9a7d282252f5079ca2b907916a80a698cf3bca7b2bf9bdc45"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/structuring-a-compose-test/SKILL.md",
@@ -1038,7 +1038,7 @@
     },
     {
       "path": "plugins/tr-codex/.codex-plugin/plugin.json",
-      "sha256": "cb6ee1cd3018ce0108a3c1e9f25d04fac90386d747187d3340ada38ad7c660ea"
+      "sha256": "36c39b93704591b3d944ef0d9cebe725d713adafe501fa6d27fee997a032c0f6"
     },
     {
       "path": "plugins/tr-codex/hooks/hooks.json",
@@ -1046,7 +1046,7 @@
     },
     {
       "path": "plugins/tr-codex/installation.json",
-      "sha256": "3df9b080b041b3a595f9db83883194b01d4549405ec448934452a27ccb9b4ad5"
+      "sha256": "2b0b6b927b68f83e1609d777687b088ee3ed1b6479e7ef575d1c16cd9104b1c6"
     },
     {
       "path": ".agents/plugins/marketplace.json",
@@ -1054,7 +1054,7 @@
     },
     {
       "path": "release.json",
-      "sha256": "48fea5f821dc95200e6c21c07c6781b499c1410012be53b23b52bc4a0c2b2440"
+      "sha256": "e74db1cc4a129efebf30609117b8f8f63d876e19c1c24510c53953ac433bf478"
     }
   ],
   "limits": "Own-source bundle only. Native discovery, trust and installation are not certified."

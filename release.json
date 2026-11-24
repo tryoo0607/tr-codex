@@ -2,9 +2,9 @@
   "schema_version": 1,
   "product": "codex",
   "name": "tr-codex",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "profile": "guarded",
-  "source_inventory_sha256": "c3d5df02a5eab7e64aac41dd5343d92b175019f767ac5b72d55caaef79ec0e7a",
+  "source_inventory_sha256": "216e8672dc27402045605a5b34d4b0e59d0a3b46a042238821fab0de109c6c3b",
   "operational_ready": false,
   "requires": [
     "native hook trust and new-session verification",
