@@ -766,11 +766,11 @@
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/references/runtime-refresh.md",
-      "sha256": "5962940270757ccba1a407330903f297ba5029c631ecaa82deec8fbf35c2818a"
+      "sha256": "9405f7c1753303a2b0b3c89aa6ee740d4d213466e07eab2e2a2c0eb77668a2a9"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/references/session-restart.md",
-      "sha256": "123358ad3244b70f22b79a695c07fe01d0bfaf3779999b26649c4514ab0c2666"
+      "sha256": "43d9246430cc571a8cb28b96c139f5489218e4308b319f9706256b49700a8e20"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/scripts/claude_live_sessions.py",
@@ -778,11 +778,11 @@
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/scripts/runtime_refresh.py",
-      "sha256": "191e965be05b3f3efc29948c672184487c5acf093db499e2d38a9249e4e67bc8"
+      "sha256": "77cef6e0b238708b2ac56fb2ef5499b1de8c59c4ba44e14642dff9c227dea052"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/session/scripts/session_restart.py",
-      "sha256": "892198942e56df04fa4c239e0f9a210bcce237e28bf29f102e7180b797d1df38"
+      "sha256": "edf657d71b5d2ad6241525471fe8b112fdb2e59eb7771bc6ed6d53070cea4f1a"
     },
     {
       "path": "plugins/tr-codex/common/base/skills/structuring-a-compose-test/SKILL.md",
@@ -1042,7 +1042,7 @@
     },
     {
       "path": "plugins/tr-codex/.codex-plugin/plugin.json",
-      "sha256": "66e48dac9b5200511261c5ce1b8aad41adcdae044dff38444591f5e29838e0af"
+      "sha256": "35ab802de6721fa5cc010d6250618b03e0b21951e125ad881b7d02c43fca1168"
     },
     {
       "path": "plugins/tr-codex/hooks/hooks.json",
@@ -1050,7 +1050,7 @@
     },
     {
       "path": "plugins/tr-codex/installation.json",
-      "sha256": "db04ca7a137aac7b2d0f8f3a958c0fa9323c3c16c0c45a5ad7b345d2e6e02ff5"
+      "sha256": "c08b77c19d6bf84c4392bac8df28d59b40a60390d113ef685f7d10a28178f5cb"
     },
     {
       "path": ".agents/plugins/marketplace.json",
@@ -1058,7 +1058,7 @@
     },
     {
       "path": "release.json",
-      "sha256": "46fc2e011a2f8c4593a7b87733ff9bee1f41c5c744b9ef0ed408062c6e83dd1f"
+      "sha256": "c4a2637e0f19824f6a23a3f46b940907c484bdb946382b0134a11c563200c73e"
     }
   ],
   "limits": "Own-source bundle only. Native discovery, trust and installation are not certified."
