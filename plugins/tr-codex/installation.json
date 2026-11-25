@@ -2,12 +2,12 @@
   "schema_version": 1,
   "product": "codex",
   "name": "tr-codex",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "profile": "guarded",
   "files": [
     {
       "path": ".codex-plugin/plugin.json",
-      "sha256": "35ab802de6721fa5cc010d6250618b03e0b21951e125ad881b7d02c43fca1168"
+      "sha256": "3b971ec207659c1429228fc2b78879732907907d5d6ecf61ee9bfeae8ec2126a"
     },
     {
       "path": "INSTALL.md",
@@ -491,7 +491,7 @@
     },
     {
       "path": "common/base/skills/session/references/runtime-refresh.md",
-      "sha256": "9405f7c1753303a2b0b3c89aa6ee740d4d213466e07eab2e2a2c0eb77668a2a9"
+      "sha256": "e9926bcbf5733231bf1f96a1c991f506344e7c0d082efb3c490f492e6b81b79d"
     },
     {
       "path": "common/base/skills/session/references/session-restart.md",
@@ -503,7 +503,7 @@
     },
     {
       "path": "common/base/skills/session/scripts/runtime_refresh.py",
-      "sha256": "77cef6e0b238708b2ac56fb2ef5499b1de8c59c4ba44e14642dff9c227dea052"
+      "sha256": "06c54d72eb84a70a5e657d5da9ae9ccee238381a65a28459af7229c25678f52b"
     },
     {
       "path": "common/base/skills/session/scripts/session_restart.py",
