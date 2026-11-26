@@ -14,7 +14,7 @@ def render(product, source_root, protected_root, catalog, scope):
     if any(not isinstance(p, Path) or not p.is_absolute() or '\x00' in str(p) for p in values):
         raise ValueError('absolute paths required')
     source_root, protected_root, catalog, scope = [p.resolve(strict=False) for p in values]
-    template = source_root / f'adapters/{product}/hooks/upstream-guard.json.in'
+    template = source_root / f'hooks/templates/{product}/upstream-guard.json.in'
     doc = json.loads(template.read_text())
     events = {'PreToolUse': '@@PRE_COMMAND@@', 'PostToolUse': '@@POST_COMMAND@@'}
     if product == 'claude': events['PostToolUseFailure'] = '@@FAILURE_COMMAND@@'
@@ -34,7 +34,7 @@ def render(product, source_root, protected_root, catalog, scope):
             raise ValueError('unexpected template handler')
         if product == 'claude' and event == 'PreToolUse' and handler.get('onFailure') != 'block':
             raise ValueError('missing product failure contract')
-        handler['command'] = shlex.join(['/bin/sh', str(source_root/'common/base/scripts/run_upstream_guard.sh'),
+        handler['command'] = shlex.join(['/bin/sh', str(source_root/'scripts/lib/common/run_upstream_guard.sh'),
                                          product, str(protected_root), str(catalog), str(scope), event])
     return doc
 

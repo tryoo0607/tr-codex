@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sys
 sys.dont_write_bytecode=True
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'common/base/scripts'))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts/lib/common'))
 from provider_links import verify
 from upstream_artifacts import inspect
 import secret_guard as secrets
@@ -26,10 +26,10 @@ def inventory(root,product):
         add(root/'common/base'/name,'common/base/'+name)
     for source_base,target_base in ((root/'common/base/skills','common/base/skills'),
         (root/'common/base/references','common/base/references'),
-        (root/'common/base/scripts','common/base/scripts'),
-        (root/f'adapters/{product}/scripts',f'adapters/{product}/scripts'),
+        (root/'scripts/lib/common','scripts/lib/common'),
+        (root/f'scripts/product/{product}',f'scripts/product/{product}'),
         (root/f'adapters/{product}/skills',f'adapters/{product}/skills'),
-        (root/f'adapters/{product}/hooks',f'adapters/{product}/hooks'),
+        (root/f'hooks/templates/{product}',f'hooks/templates/{product}'),
         (root/f'adapters/{product}/mcp',f'adapters/{product}/mcp'),
         (root/'scripts','scripts')):
         for p in sorted(source_base.rglob('*')):
@@ -44,7 +44,7 @@ def inventory(root,product):
     if template_path.is_symlink() or not template_path.is_file():raise ValueError('own template must be a regular file')
     template=template_path.read_text()
     if template.count('{{COMMON_INSTRUCTIONS}}')!=1:raise ValueError('invalid instruction template')
-    rendered=template.replace('{{COMMON_INSTRUCTIONS}}',files['common/base/instructions.md'].decode())
+    rendered=template.replace('{{COMMON_INSTRUCTIONS}}',files['instructions.md'].decode())
     files[name]=rendered.encode()
     native_template=root/f'adapters/{product}/plugin.json.in'
     if native_template.exists():add(native_template,f'adapters/{product}/plugin.json.in')

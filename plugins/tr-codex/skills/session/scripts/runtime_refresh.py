@@ -1,0 +1,2017 @@
+#!/usr/bin/env python3
+"""Conservative Orca/native runtime refresh. stdout contains metadata only."""
+import argparse
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import shlex
+import stat
+import subprocess
+import sys
+import time
+import uuid
+
+
+class Deferred(Exception):
+    pass
+
+
+CODEX_RESUME_VERSIONS = ('0.167.1', '0.167.2', '0.171.0', '0.172.0')
+CODEX_STATUS_RESPONSE_TIMEOUT = 15
+
+
+def codex_versions(text):
+    return re.findall(r'OpenAI Codex \(v([0-9][A-Za-z0-9.+_-]{0,63})\)', text)
+
+
+def obj(value):
+    if not isinstance(value, dict):
+        raise Deferred('invalid-json-shape')
+    return value
+
+
+def array(value):
+    if not isinstance(value, list) or any(not isinstance(x, dict) for x in value):
+        raise Deferred('invalid-json-shape')
+    return value
+
+
+def token(value):
+    return isinstance(value, str) and 0 < len(value) <= 1024 and not any(ord(c) < 32 for c in value)
+
+
+def pane(t):
+    return str(t.get('tabId', '')) + ':' + str(t.get('leafId', ''))
+
+
+def fingerprint(t):
+    if not isinstance(t.get('handle'), str) or not re.fullmatch(r'term_[A-Za-z0-9_-]+', t['handle']):
+        raise Deferred('invalid-terminal-handle')
+    keys = ('handle', 'ptyId', 'incarnationId', 'worktreeId', 'worktreePath', 'executionHostId', 'tabId', 'leafId')
+    if any(not token(t.get(k)) for k in keys):
+        raise Deferred('identity-unknown')
+    return {k: t[k] for k in keys}
+
+
+class Orca:
+    def __init__(self, environment=None, timeout=15):
+        self.environment = environment or os.environ.get('ORCA_ENVIRONMENT')
+        self.remote_configured = bool(self.environment or os.environ.get('ORCA_PAIRING_CODE'))
+        configured = os.environ.get('ORCA_CLI_COMMAND', '').strip()
+        self.executable = configured or ('orca-dev' if os.environ.get('ORCA_DEV_REPO_ROOT') else
+                                         'orca-ide' if sys.platform == 'linux' and not os.environ.get('ORCA_PANE_KEY') else 'orca')
+        self.timeout = timeout
+        self.runtime = None
+
+    def call(self, *args):
+        command = [self.executable, *args, '--json']
+        if self.environment:
+            command += ['--environment', self.environment]
+        try:
+            p = subprocess.run(command, capture_output=True, text=True, timeout=self.timeout,
+                               check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            raise Deferred('cli-unavailable-or-timeout') from None
+        # Never relay CLI stderr, screen text, prompts, or parser exceptions.
+        try:
+            data = obj(json.loads(p.stdout))
+            if p.returncode or data.get('ok') is not True:
+                raise Deferred('cli-failed')
+            runtime = obj(data.get('_meta')).get('runtimeId')
+            if not token(runtime):
+                raise Deferred('runtime-unknown')
+            if self.runtime is not None and self.runtime != runtime:
+                raise Deferred('runtime-changed')
+            self.runtime = runtime
+            return obj(data.get('result'))
+        except (ValueError, TypeError):
+            raise Deferred('invalid-json') from None
+
+    def inventory(self):
+        ts = self.call('terminal', 'list')
+        ps = self.call('worktree', 'ps')
+        for data in (ts, ps):
+            if data.get('truncated') is not False:
+                raise Deferred('inventory-incomplete')
+            scope = obj(data.get('hostScope'))
+            if not isinstance(scope.get('hostIds'), list):
+                raise Deferred('host-scope-unknown')
+        return ts, ps
+
+    def observe(self, handle):
+        t = obj(self.call('terminal', 'show', '--terminal', handle).get('terminal'))
+        r = obj(self.call('terminal', 'read', '--terminal', handle, '--screen').get('terminal'))
+        return t, r
+
+
+def screen(read):
+    tail = read.get('tail')
+    if read.get('source') != 'screen' or not isinstance(tail, list) or any(not isinstance(x, str) for x in tail):
+        raise Deferred('screen-unknown')
+    # ANSI sequences must not turn controls or hidden draft text into an empty prompt.
+    if any('\x1b' in line for line in tail):
+        raise Deferred('screen-controls')
+    return '\n'.join(tail)
+
+
+CLAUDE_NATIVE_VERSIONS = frozenset(('2.1.319', '2.1.329', '2.1.330', '2.1.331', '2.1.332'))
+CLAUDE_LAUNCH_VERSIONS = frozenset(('2.1.330', '2.1.331', '2.1.332'))
+# Source-version-specific owned status/exit/process observations. Full guarded
+# native restart cycles remain a separate operational verification step.
+CLAUDE_RESTART_SOURCE_VERSIONS = frozenset(('2.1.319', '2.1.329', '2.1.332'))
+CLAUDE_331_PLACEHOLDERS = frozenset(('❯\u00a0Try "create a util logging.py that…"',
+                                     '❯\u00a0Try "how does <filepath> work?"'))
+
+
+def codex_historical_hook_error(text, lines):
+    """Identify one observed completed error line for dialog classification only.
+
+    Called after the ordinary empty-composer check. Neither the source frame
+    nor returned text/proof is filtered, and this is never hook trust evidence.
+    Unknown, repeated or reordered presentations retain the approval refusal.
+    """
+    if any(ord(char) < 32 and char != '\n' or 127 <= ord(char) <= 159 for char in text):
+        return None
+    headers = [i for i, line in enumerate(lines) if 'OpenAI Codex (v' in line]
+    for i in headers:
+        match = re.fullmatch(r' *>_ OpenAI Codex \(v([0-9][A-Za-z0-9.+_-]{0,63})\)', lines[i])
+        if match is None or match[1] not in CODEX_RESUME_VERSIONS:
+            return None
+    errors = [i for i, line in enumerate(lines) if 'Hook failed' in line]
+    messages = [i for i, line in enumerate(lines) if 'hook approval required' in line]
+    if len(errors) != 1 or len(messages) != 1:
+        return None
+    error, message = errors[0], messages[0]
+    # Completion belongs to this exact adjacent pair, regardless of other
+    # completed turns or a supported header moving below history after crop.
+    completed = message + 1
+    prompts = [i for i, line in enumerate(lines) if line.lstrip().startswith('›')]
+    if (lines[error] != '• Hook failed'
+            or lines[message] != '  └ plugin contents changed; hook approval required'
+            or message != error + 1 or completed >= len(lines)
+            or not headers
+            or not prompts or completed >= prompts[-1]
+            or lines[prompts[-1]].strip() not in ('›', '› Ask Codex to do anything')
+            or not re.fullmatch(r'  Worked for (?:0|[1-9][0-9]*)s • '
+                                r'(?:(?:[1-9]|1[0-2]):[0-5][0-9] (?:AM|PM)|'
+                                r'(?:[01][0-9]|2[0-3]):[0-5][0-9])', lines[completed])
+            or completed + 1 < len(lines) and 'Worked for' in lines[completed + 1]):
+        return None
+    return message
+
+
+def idle_screen(provider, read):
+    if read.get('draft') not in (None, ''):
+        raise Deferred('draft')
+    text = screen(read)
+    # A background prompt cannot make a visible status card safe for input.
+    if provider == 'claude' and re.search(
+            r'(?m)^\s*(?:Settings\s+Status\s+Config\s+Usage\s+Stats|←/→ to switch · Esc to close)\s*$', text):
+        raise Deferred('approval-or-menu')
+    if re.search(r'(?i)(conversation is open in another app|close it there and press|r retry.*f fork)', text):
+        raise Deferred('native-session-in-use')
+    prompt = '›' if provider == 'codex' else '❯'
+    lines = text.splitlines()
+    prompts = [line.strip() for line in lines if line.lstrip().startswith(prompt)]
+    if not prompts:
+        raise Deferred('idle-prompt-unknown')
+    versions = codex_versions(text) if provider == 'codex' else []
+    visible_header = provider == 'codex' and 'OpenAI Codex (v' in text
+    known_header = bool(versions) and all(v in CODEX_RESUME_VERSIONS for v in versions)
+    if visible_header and not known_header:
+        raise Deferred('draft')
+    placeholder = (provider == 'codex' and prompts[-1] == '› Ask Codex to do anything' and
+                   (not visible_header or known_header))
+    claude_placeholder = (provider == 'claude' and read.get('draft') in (None, '')
+                          and prompts[-1] in CLAUDE_331_PLACEHOLDERS
+                          and re.findall(r'Claude Code v([^\s]+)', text) == ['2.1.331']
+                          and re.search(r'(?m)^[ \t]*▐▛███▛█   Claude Code v2\.1\.331[ \t]*$', text))
+    if prompts[-1] != prompt and not placeholder and not claude_placeholder:
+        raise Deferred('draft')
+    # A prompt may remain on screen behind a dialog. Refuse known menus and approvals.
+    historical_error = codex_historical_hook_error(text, lines) if provider == 'codex' else None
+    dialog_text = '\n'.join(line for i, line in enumerate(lines) if i != historical_error
+                            and not re.match(r'^\s*(?:Permissions|Permission mode)\s*:', line))
+    if re.search(r'(?im)((?<![-\w])approve\b|(?<![-\w])approvals?\b|allow once|trust this|select an option|esc to cancel|enter to confirm|yes, proceed)', dialog_text):
+        raise Deferred('approval-or-menu')
+    return text
+
+
+def agent_for(ps, t):
+    found = []
+    for w in array(ps.get('worktrees')):
+        if w.get('worktreeId') == t.get('worktreeId'):
+            for a in array(w.get('agents', [])):
+                if a.get('paneKey') == pane(t):
+                    found.append(a)
+    if len(found) != 1:
+        raise Deferred('agent-identity-unknown')
+    return found[0]
+
+
+def proc_process(pid, reason):
+    path = Path('/proc') / str(pid)
+    # FileNotFoundError is meaningful only for an unrelated process which
+    # exited during the group scan. Permission and malformed data are errors.
+    raw = (path / 'stat').read_text()
+    prefix, separator, rest = raw.rpartition(') ')
+    fields = rest.split()
+    if not separator or prefix.split(' ', 1)[0] != str(pid) or len(fields) < 20:
+        raise Deferred(reason)
+    try:
+        values = [int(fields[i]) for i in (1, 2, 3, 4, 5, 19)]
+    except ValueError:
+        raise Deferred(reason) from None
+    return dict(zip(('ppid', 'pgrp', 'sid', 'tty', 'foreground', 'starttime'), values),
+                pid=pid, uid=path.stat().st_uid)
+
+
+def proc_executable(pid):
+    value = os.readlink('/proc/' + str(pid) + '/exe')
+    entry = os.stat('/proc/' + str(pid) + '/exe')
+    return {'path': value, 'device': entry.st_dev, 'inode': entry.st_ino,
+            'uid': entry.st_uid, 'mode': entry.st_mode, 'mtime': entry.st_mtime_ns}
+
+
+def management_process_proof():
+    """Prove this Python is the sole foreground job of a system shell on Linux.
+
+    stdin can be a heredoc. Controlling TTY/session ownership comes from proc,
+    not stdin, process names, or the terminal's optional detection hint.
+    """
+    if sys.platform != 'linux':
+        raise Deferred('management-process-unsupported')
+
+    def process(pid):
+        return proc_process(pid, 'management-process-unverifiable')
+
+    executable = proc_executable
+
+    try:
+        helper = process(os.getpid())
+        parent = process(helper['ppid'])
+        helper_exe, parent_exe = executable(helper['pid']), executable(parent['pid'])
+        supported = {str(Path(path).resolve()) for path in
+                     ('/bin/bash', '/usr/bin/bash', '/bin/zsh', '/usr/bin/zsh',
+                      '/bin/dash', '/usr/bin/dash')}
+        if (helper['pid'] != helper['pgrp'] or helper['pid'] != helper['foreground']
+                or helper['tty'] == 0 or helper['starttime'] <= 0 or parent['starttime'] <= 0
+                or helper['sid'] != parent['pid'] or parent['sid'] != parent['pid']
+                or helper['tty'] != parent['tty'] or parent['foreground'] != helper['pgrp']
+                or helper['uid'] != os.getuid() or parent['uid'] != os.getuid()
+                or helper_exe['path'] != os.path.realpath(sys.executable)
+                or not re.fullmatch(r'python3(?:\.\d+)?', Path(helper_exe['path']).name)
+                or parent_exe['path'] not in supported or parent_exe['uid'] != 0
+                or parent_exe['mode'] & (stat.S_IWGRP | stat.S_IWOTH)):
+            raise Deferred('management-process-unverifiable')
+        members = []
+        for entry in Path('/proc').iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                observed = process(int(entry.name))
+            except FileNotFoundError:
+                continue
+            if observed['pgrp'] == helper['pgrp']:
+                members.append(observed['pid'])
+        if members != [helper['pid']]:
+            raise Deferred('management-process-unverifiable')
+        # Do not accept a process/session change while the full scan was running.
+        if (process(helper['pid']) != helper or process(parent['pid']) != parent
+                or executable(helper['pid']) != helper_exe or executable(parent['pid']) != parent_exe):
+            raise Deferred('management-process-changed')
+        return {'helper': helper, 'parent': parent, 'helperExecutable': helper_exe,
+                'parentExecutable': parent_exe}
+    except (OSError, ValueError, IndexError):
+        raise Deferred('management-process-unverifiable') from None
+
+
+def target_shell_process_proof(identity):
+    """Prove a local empty zsh job, independently of the caller helper proof.
+
+    Only the pane key is retained from proc environ. Nothing in this proof is
+    durable authority, and a process name or prompt alone is never evidence.
+    """
+    failure = 'target-shell-process-unverifiable'
+    if sys.platform != 'linux' or identity['executionHostId'] != 'local':
+        raise Deferred('target-shell-process-unsupported')
+    zsh_paths = {str(Path(path).resolve()) for path in ('/bin/zsh', '/usr/bin/zsh')}
+    shell_paths = zsh_paths | {str(Path(path).resolve()) for path in
+                              ('/bin/bash', '/usr/bin/bash', '/bin/dash', '/usr/bin/dash')}
+
+    def observation():
+        processes, candidates = [], []
+        for entry in Path('/proc').iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                process = proc_process(int(entry.name), failure)
+            except FileNotFoundError:
+                continue
+            processes.append(process)
+            if (process['uid'] != os.getuid() or process['sid'] != process['pid']
+                    or process['tty'] == 0):
+                continue
+            try:
+                executable = proc_executable(process['pid'])
+                if executable['path'] not in shell_paths or executable['uid'] != 0:
+                    continue
+                with (entry / 'environ').open('rb') as stream:
+                    environment = stream.read(1024 * 1024 + 1)
+                if len(environment) > 1024 * 1024:
+                    raise Deferred(failure)
+                keys = [value for value in environment.split(b'\0') if value.startswith(b'ORCA_PANE_KEY=')]
+                expected_key = b'ORCA_PANE_KEY=' + pane(identity).encode()
+                if expected_key in keys and keys != [expected_key]:
+                    raise Deferred(failure)
+                if keys != [expected_key]:
+                    continue
+                cwd = os.readlink(str(entry / 'cwd'))
+            except FileNotFoundError:
+                # A disappearing same-UID session leader cannot be silently
+                # excluded from the uniqueness proof.
+                raise Deferred(failure) from None
+            candidates.append({'shell': process, 'executable': executable,
+                               'cwd': cwd, 'pane': pane(identity)})
+        if len(candidates) != 1:
+            raise Deferred(failure)
+        proof = candidates[0]
+        shell, executable = proof['shell'], proof['executable']
+        if (shell['pid'] != shell['pgrp'] or shell['pid'] != shell['foreground']
+                or shell['tty'] == 0 or shell['starttime'] <= 0
+                or proof['cwd'] != identity['worktreePath']
+                or executable['path'] not in zsh_paths
+                or executable['uid'] != 0 or not stat.S_ISREG(executable['mode'])
+                or executable['mode'] & (stat.S_IWGRP | stat.S_IWOTH)):
+            raise Deferred(failure)
+        members = sorted((p for p in processes if p['pgrp'] == shell['pgrp']), key=lambda p: p['pid'])
+        if members != [shell]:
+            raise Deferred(failure)
+        # Reread the chosen process after the complete group/uniqueness scan.
+        if (proc_process(shell['pid'], failure) != shell
+                or proc_executable(shell['pid']) != executable
+                or os.readlink('/proc/' + str(shell['pid']) + '/cwd') != proof['cwd']):
+            raise Deferred('target-shell-process-changed')
+        return proof
+
+    try:
+        before = observation()
+        if observation() != before:
+            raise Deferred('target-shell-process-changed')
+        return before
+    except (OSError, ValueError, IndexError):
+        raise Deferred(failure) from None
+
+
+def target_shell_check(client, target):
+    proof = getattr(client, 'target_shell_proof', None)
+    if proof is None:
+        return
+    if proof['identity'] != target['identity']:
+        raise Deferred('target-shell-proof-changed')
+    shell_guard(client, proof['plan'], target, proof['normalExit'])
+
+
+def management_observation(client, self_pane, terms, ps):
+    """Collect current own-pane evidence without sending input or requiring a prompt."""
+    runtime = client.runtime
+    matches = [t for t in terms if pane(t) == self_pane]
+    if len(matches) != 1:
+        raise Deferred('self-unidentified')
+    expected = fingerprint(matches[0])
+    if expected['executionHostId'] != 'local':
+        raise Deferred('management-self-unverifiable')
+    for workspace in array(ps.get('worktrees')):
+        for agent in array(workspace.get('agents', [])):
+            if agent.get('paneKey') == self_pane or agent.get('parentPaneKey') == self_pane:
+                raise Deferred('management-agent-associated')
+    own, frame = client.observe(expected['handle'])
+    if fingerprint(own) != expected:
+        raise Deferred('management-self-changed')
+    for observed in (matches[0], own):
+        if (observed.get('agentIdentity') is not None or observed.get('agentWait') is not None
+                or observed.get('orphaned') is not False or observed.get('connected') is not True
+                or observed.get('writable') is not True):
+            raise Deferred('management-self-unverifiable')
+    if frame.get('draft') not in (None, ''):
+        raise Deferred('draft')
+    screen(frame)
+    process = management_process_proof()
+    if client.runtime != runtime:
+        raise Deferred('management-self-changed')
+    return {'runtimeId': runtime, 'selfPane': self_pane, 'identity': expected, 'process': process}
+
+
+def management_self_check(client, terms=None, ps=None, *, process_only=False, terminal_inventory=None):
+    """Compare fixed ephemeral authority; never refresh it into new authority."""
+    exception_check = getattr(client, 'recovery_exception_check', None)
+    if exception_check is not None:
+        exception_check(terms, ps, process_only=process_only, terminal_inventory=terminal_inventory,
+                        native_query=False)
+    proof = getattr(client, 'management_self', None)
+    if proof is None:
+        return
+    if (getattr(client, 'remote_configured', False) or getattr(client, 'environment', None)
+            or client.runtime != proof['runtimeId']):
+        raise Deferred('management-self-changed')
+    if not process_only:
+        if terms is None or ps is None:
+            ts, ps = client.inventory()
+            terms = array(ts.get('terminals'))
+            inventories = (ts, ps)
+        else:
+            # Callers supply terms only from their already checked complete
+            # local inventory; no synthetic inventory metadata is evidence.
+            inventories = (ps,) if terminal_inventory is None else (terminal_inventory, ps)
+        for inventory in inventories:
+            if (inventory.get('truncated') is not False
+                    or 'local' not in obj(inventory.get('hostScope')).get('hostIds', [])):
+                raise Deferred('inventory-incomplete')
+        if len({t.get('handle') for t in terms}) != len(terms):
+            raise Deferred('duplicate-target')
+        current = management_observation(client, proof['selfPane'], terms, ps)
+        if current != proof:
+            raise Deferred('management-self-changed')
+    # At the final native boundary do not insert another Orca observation after
+    # its last target frame/proof. Only local fixed process evidence is reread.
+    if management_process_proof() != proof['process'] or client.runtime != proof['runtimeId']:
+        raise Deferred('management-self-changed')
+
+
+class VerifiedClaudeProvider(tuple):
+    """Immutable terminal-bound authority, separate from Orca observations."""
+    __slots__ = ()
+
+    def __new__(cls, identity):
+        return tuple.__new__(cls, tuple(fingerprint(identity).items()))
+
+    def matches(self, terminal):
+        return tuple(self) == tuple(fingerprint(terminal).items())
+
+
+def native_provider_check(client, target, terminal=None):
+    check = target.get('nativeProviderCheck')
+    return check(client, terminal) if check is not None else None
+
+
+def eligible(t, read, ps, self_pane, self_found, tui_idle=False, modal=False, *, verified_provider=None):
+    fingerprint(t)
+    if not self_found:
+        raise Deferred('self-unidentified')
+    if pane(t) == self_pane:
+        raise Deferred('self')
+    if t.get('orphaned') is not False or t.get('connected') is not True or t.get('writable') is not True:
+        raise Deferred('terminal-unavailable')
+    if t.get('agentWait') is not None:
+        raise Deferred('approval-or-wait')
+    a = agent_for(ps, t)
+    provider = t.get('agentIdentity')
+    if (provider is None
+            and isinstance(verified_provider, VerifiedClaudeProvider) and verified_provider.matches(t)
+            and a.get('agentType') == 'claude'):
+        provider = 'claude'
+    if provider not in ('codex', 'claude') or a.get('agentType') != provider or a.get('structuredHostOwned') is True:
+        raise Deferred('provider-or-structured-unsupported')
+    if a.get('parentPaneKey') or a.get('children') or a.get('subagents'):
+        raise Deferred('child-work')
+    main = obj(a.get('mainAgent'))
+    missing_claude_program = provider == 'claude' and a.get('programStatus') is None
+    program = {} if missing_claude_program else obj(a.get('programStatus'))
+    claude_completion = (missing_claude_program and tui_idle and
+                         a.get('state') == main.get('state') == 'done')
+    observation = a.get('subagentObservation')
+    # Native Codex and Claude omit empty rosters; their aggregate state folds tracked work.
+    omitted_empty_native = (provider in ('codex', 'claude') and observation is None and
+                           'children' not in a and 'subagents' not in a and
+                           a.get('state') == main.get('state') == 'done' and
+                           (program.get('state') in ('done', 'idle') or claude_completion))
+    if observation != 'live' and not omitted_empty_native:
+        raise Deferred('child-state-unknown')
+    if a.get('state') not in ('idle', 'done') or main.get('state') not in ('idle', 'done') or (program.get('state') not in ('idle', 'done') and not claude_completion):
+        raise Deferred('busy-or-state-unknown')
+    if read.get('draft') not in (None, ''):
+        raise Deferred('draft')
+    if not modal:
+        idle_screen(provider, read)
+    return provider
+
+
+NATIVE_TIMEOUT = 15
+CODEX_INVENTORY_TIMEOUT = 180
+INVENTORY_PROGRESS_INTERVAL = 5
+NATIVE_STDOUT_LIMIT = 2_000_000
+NATIVE_STDERR_LIMIT = 64_000
+NATIVE_CLEANUP_TIMEOUT = 2
+
+
+def inventory_progress(provider, elapsed, timeout):
+    """Best effort only: never block the native deadline or change caller flags."""
+    message = json.dumps({'phase': 'native-inventory-wait', 'provider': provider,
+                          'elapsedSeconds': int(elapsed), 'timeoutSeconds': timeout}) + '\n'
+    descriptor = None
+    try:
+        if type(sys.stderr) is io.StringIO:
+            sys.stderr.write(message)
+            return
+        if type(sys.stderr) is not io.TextIOWrapper:
+            return
+        original = sys.stderr.fileno()
+        before = os.fstat(original)
+        # Reopening through proc creates an independent open-file description;
+        # dup/set_blocking would change flags shared with the caller. Disk sinks
+        # and arbitrary Python writers have no bounded write contract: omit them.
+        if not (stat.S_ISFIFO(before.st_mode) or stat.S_ISCHR(before.st_mode)):
+            return
+        descriptor = os.open('/proc/self/fd/' + str(original),
+                             os.O_WRONLY | os.O_NONBLOCK | os.O_NOCTTY | os.O_CLOEXEC)
+        own = os.fstat(descriptor)
+        if (own.st_dev, own.st_ino) != (before.st_dev, before.st_ino):
+            return
+        # One small atomic pipe write, no queue, flush, thread or retry.
+        os.write(descriptor, message.encode('ascii'))
+    except (OSError, ValueError, AttributeError):
+        pass
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def native_command(provider, args, cwd, *, executable=None):
+    """Capture complete output within time/byte bounds and own the child group."""
+    if provider not in ('codex', 'claude'):
+        raise Deferred('provider-unsupported')
+    command = provider
+    if executable is not None:
+        # Internal producer-bound calls must never resolve a bare command again
+        # under cwd. The caller owns the stronger official executable identity.
+        try:
+            path = Path(executable)
+            info = path.lstat()
+            if (not token(executable) or not path.is_absolute()
+                    or path.resolve(strict=True) != path
+                    or not stat.S_ISREG(info.st_mode) or not info.st_mode & 0o111):
+                raise Deferred('native-cli-executable-unverified')
+        except (OSError, ValueError, TypeError):
+            raise Deferred('native-cli-executable-unverified') from None
+        command = executable
+    inventory = args == ['plugin', 'list', '--json']
+    timeout = CODEX_INVENTORY_TIMEOUT if inventory and provider == 'codex' else NATIVE_TIMEOUT
+    started = time.monotonic()
+    deadline, next_progress = started + timeout, started + INVENTORY_PROGRESS_INTERVAL
+    captured = {'stdout': bytearray(), 'stderr': bytearray()}
+    limits = {'stdout': NATIVE_STDOUT_LIMIT, 'stderr': NATIVE_STDERR_LIMIT}
+    child = None
+    try:
+        child = subprocess.Popen([command, *args], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, start_new_session=True)
+        with selectors.DefaultSelector() as selector:
+            for name in captured:
+                pipe = getattr(child, name)
+                os.set_blocking(pipe.fileno(), False)
+                selector.register(pipe, selectors.EVENT_READ, name)
+            while selector.get_map() or child.poll() is None:
+                now = time.monotonic()
+                if now >= deadline:
+                    raise Deferred('native-cli-unavailable-or-timeout')
+                if inventory and now >= next_progress:
+                    inventory_progress(provider, now - started, timeout)
+                    next_progress = now + INVENTORY_PROGRESS_INTERVAL
+                wake = min(deadline, next_progress) if inventory else deadline
+                for key, _ in selector.select(max(0, min(0.1, wake - now))):
+                    name = key.data
+                    data = os.read(key.fd, min(65536, limits[name] + 1 - len(captured[name])))
+                    if data:
+                        captured[name].extend(data)
+                        if len(captured[name]) > limits[name]:
+                            raise Deferred('native-cli-output-limit')
+                    else:
+                        selector.unregister(key.fileobj)
+        if child.returncode:
+            raise Deferred('native-cli-failed')
+        try:
+            output, diagnostics = (captured[name].decode('utf-8', errors='strict')
+                                   for name in ('stdout', 'stderr'))
+        except UnicodeError:
+            raise Deferred('native-cli-invalid-encoding') from None
+        if diagnostics:
+            raise Deferred('native-cli-diagnostics-unverified')
+        return output
+    except OSError:
+        raise Deferred('native-cli-unavailable-or-timeout') from None
+    finally:
+        if child is not None:
+            try:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                try:
+                    child.wait(timeout=NATIVE_CLEANUP_TIMEOUT)
+                except subprocess.TimeoutExpired:
+                    raise Deferred('native-cli-cleanup-unverified') from None
+            finally:
+                child.stdout.close()
+                child.stderr.close()
+
+
+def manifest_metadata(path, plugin_id):
+    path = Path(path)
+    if not path.is_absolute():
+        raise Deferred('manifest-location-unknown')
+    fd = os.open(path / '.claude-plugin/plugin.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, 'rb') as f:
+        info = os.fstat(f.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 1_000_000:
+            raise Deferred('manifest-unreadable')
+        content = f.read()
+    manifest = obj(json.loads(content))
+    if manifest.get('name') != plugin_id.split('@')[0]:
+        raise Deferred('manifest-identity-mismatch')
+    dependencies = manifest.get('dependencies', [])
+    if not isinstance(dependencies, list):
+        raise Deferred('dependency-shape-unknown')
+    normalized = []
+    for dep in dependencies:
+        if isinstance(dep, str):
+            name, version = dep, None
+        elif isinstance(dep, dict) and set(dep) <= {'name', 'marketplace', 'version'}:
+            name, version = dep.get('name'), dep.get('version')
+            if dep.get('marketplace') is not None:
+                if not token(dep['marketplace']) or not token(name) or '@' in name:
+                    raise Deferred('dependency-shape-unknown')
+                name += '@' + dep['marketplace']
+        else:
+            raise Deferred('dependency-shape-unknown')
+        if not token(name) or (version is not None and (not token(version) or not re.fullmatch(r'\d+\.\d+\.\d+(?:[-+][A-Za-z0-9_.-]+)?', version))):
+            raise Deferred('dependency-version-or-name-unknown')
+        if '@' not in name:
+            if '@' not in plugin_id:
+                raise Deferred('dependency-marketplace-unknown')
+            name += '@' + plugin_id.rsplit('@', 1)[1]
+        normalized.append({'id': name, 'version': version})
+    return {'manifestSha256': hashlib.sha256(content).hexdigest(),
+            'dependencies': sorted(normalized, key=lambda x: (x['id'], x['version'] or ''))}
+
+
+def plugin_identity(plugin):
+    return plugin['id'], plugin['scope'], plugin.get('projectContext', '')
+
+
+def project_context(value):
+    if (not token(value) or not Path(value).is_absolute() or value.startswith('//')
+            or '..' in Path(value).parts or str(Path(value)) != value):
+        raise Deferred('plugin-project-context-unknown')
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def plugin_inventory(provider, cwd):
+    """Read native installed metadata only, never infer running-session consumption."""
+    base = {'provider': provider, 'scope': 'caller-config-at-cwd', 'cwd': cwd,
+            'source': 'native-plugin-list', 'consumption': 'unverified'}
+    try:
+        version = native_command(provider, ['--version'], cwd).strip()
+        match = re.fullmatch(r'(?:codex-cli\s+)?(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9_.-]+)?)(?:\s+\(Claude Code\))?', version)
+        if not match:
+            raise Deferred('native-version-unknown')
+        data = json.loads(native_command(provider, ['plugin', 'list', '--json'], cwd))
+        entries = array(obj(data).get('installed')) if provider == 'codex' else array(data)
+        plugins = []
+        dependencies_ready = True
+        for entry in entries:
+            ident = entry.get('pluginId' if provider == 'codex' else 'id')
+            installed_version = entry.get('version')
+            enabled = entry.get('enabled')
+            scope = 'user' if provider == 'codex' else entry.get('scope')
+            if (not token(ident) or not token(installed_version) or type(enabled) is not bool or
+                    scope not in ('user', 'project', 'local', 'managed', 'session', 'synced')):
+                raise Deferred('plugin-inventory-shape-unknown')
+            if provider == 'codex' and entry.get('installed') is not True:
+                raise Deferred('plugin-installation-unknown')
+            item = {'id': ident, 'version': installed_version, 'enabled': enabled, 'scope': scope}
+            if provider == 'claude' and scope in ('project', 'local'):
+                item['projectContext'] = project_context(entry.get('projectPath'))
+            if provider == 'claude' and enabled:
+                try:
+                    item.update(manifest_metadata(entry.get('readFromFolder') or entry.get('installPath'), ident))
+                    item['manifestState'] = 'observed'
+                except (Deferred, OSError, ValueError, TypeError):
+                    item.update(manifestState='unverified', dependencies=[], manifestSha256=None)
+                    dependencies_ready = False
+                # Native list may report missing package/dependency or load diagnostics.
+                # Refuse every diagnostic; never echo its possibly private contents.
+                if any(not isinstance(entry.get(k, []), list) or entry.get(k)
+                       for k in ('errors', 'notes', 'errorDetails', 'noteDetails')):
+                    dependencies_ready = False
+                if installed_version == 'unknown':
+                    dependencies_ready = False
+            plugins.append(item)
+        plugins.sort(key=plugin_identity)
+        if len({plugin_identity(p) for p in plugins}) != len(plugins):
+            raise Deferred('plugin-installation-ambiguous')
+        if provider == 'claude':
+            enabled_by_id = {}
+            for p in plugins:
+                if p['enabled']:
+                    enabled_by_id.setdefault(p['id'], []).append(p)
+            if any(len(matches) != 1 for matches in enabled_by_id.values()):
+                dependencies_ready = False
+            for p in plugins:
+                if not p['enabled']:
+                    continue
+                for dep in p['dependencies']:
+                    matches = enabled_by_id.get(dep['id'], [])
+                    if len(matches) != 1 or (dep['version'] is not None and matches[0]['version'] != dep['version']):
+                        dependencies_ready = False
+        return {**base, 'state': 'observed', 'nativeVersion': match[1], 'plugins': plugins,
+                'dependenciesReady': dependencies_ready if provider == 'claude' else None}
+    except (Deferred, OSError, ValueError, TypeError, RecursionError):
+        error = sys.exc_info()[1]
+        return {**base, 'state': 'unverified', 'reason': str(error) if isinstance(error, Deferred) else 'native-inventory-unreadable'}
+
+
+def installation_guard(target):
+    expected = obj(target.get('installation'))
+    current = plugin_inventory(target['provider'], target['identity']['worktreePath'])
+    if expected.get('state') != 'observed' or current.get('state') != 'observed':
+        raise Deferred('installed-versions-unverified')
+    if current != expected:
+        raise Deferred('installed-versions-drift')
+    return current
+
+
+def installed_versions(inventory):
+    return {':'.join(part for part in plugin_identity(p) if part): p['version'] for p in inventory['plugins']}
+
+
+def inspect(client, self_pane):
+    ts, ps = client.inventory()
+    terms = array(ts.get('terminals'))
+    handles = [t.get('handle') for t in terms]
+    if len(set(handles)) != len(handles):
+        raise Deferred('duplicate-target')
+    self_found = bool(self_pane) and sum(pane(t) == self_pane for t in terms) == 1
+    rows = []
+    installations = {}
+    for item in terms:
+        row = {k: item.get(k) for k in ('handle', 'incarnationId', 'worktreePath', 'executionHostId')}
+        try:
+            fingerprint(item)
+            t, r = client.observe(item['handle'])
+            if fingerprint(t) != fingerprint(item):
+                raise Deferred('target-changed')
+            provider = t.get('agentIdentity')
+            if provider in ('codex', 'claude'):
+                row['provider'] = provider
+                key = (provider, t['worktreePath'])
+                if key not in installations:
+                    installations[key] = (plugin_inventory(*key) if not getattr(client, 'remote_configured', False) and t['executionHostId'] == 'local' else
+                                          {'state': 'unverified', 'reason': 'remote-installation-delegate-to-host-session'})
+                row['installation'] = installations[key]
+            observed_idle = False
+            if provider == 'claude' and pane(t) != self_pane and self_found and agent_for(ps, t).get('programStatus') is None:
+                wait_idle(client, {'handle': t['handle']})
+                observed_idle = True
+            row['provider'] = eligible(t, r, ps, self_pane, self_found, tui_idle=observed_idle)
+            row['identity'] = fingerprint(t)
+            row['state'] = 'idle'
+            row['reason'] = None
+        except Deferred as e:
+            row['state'] = 'deferred'
+            row['reason'] = str(e)
+        rows.append(row)
+    structured = []
+    for w in array(ps.get('worktrees')):
+        for a in array(w.get('agents', [])):
+            if a.get('structuredHostOwned') is True:
+                structured.append({'pane': a.get('paneKey'), 'provider': a.get('agentType'),
+                                   'host': w.get('hostId'), 'cwd': w.get('path'),
+                                   'state': 'deferred', 'reason': 'structured-unsupported'})
+    scope = ts['hostScope']
+    return {'schema': 1, 'runtimeId': client.runtime, 'selfPane': self_pane if self_found else None,
+            'environment': client.environment, 'remoteConfigured': getattr(client, 'remote_configured', False),
+            'hostScope': {k: scope.get(k) for k in ('hostIds', 'omittedHostIds', 'omittedHostSelectors')},
+            'targets': rows, 'structured': structured}
+
+
+def make_plan(report, selected):
+    if not selected or len(selected) != len(set(selected)):
+        raise Deferred('explicit-unique-targets-required')
+    rows = {r['handle']: r for r in report['targets']}
+    if any(h not in rows for h in selected):
+        raise Deferred('unknown-selection')
+    if any(rows[h]['state'] != 'idle' or rows[h].get('installation', {}).get('state') != 'observed' for h in selected):
+        raise Deferred('selection-deferred')
+    return {'schema': 1, 'operationId': str(uuid.uuid4()), 'createdAt': time.time(),
+            'runtimeId': report['runtimeId'], 'selfPane': report['selfPane'],
+            'environment': report['environment'], 'remoteConfigured': report.get('remoteConfigured', False), 'targets': [rows[h] for h in selected]}
+
+
+def receiver_cwd(value):
+    """Expand only unambiguous receiver-local home displays, never shell syntax."""
+    if not token(value):
+        raise Deferred('native-identity-unknown')
+    if value == '~' or value.startswith('~/'):
+        parts = value[2:].split('/') if value != '~' else []
+        if any(not part or part != part.strip() or part in ('.', '..')
+               or not re.fullmatch(r'[\w .@+-]+', part) for part in parts):
+            raise Deferred('native-identity-unknown')
+        home = Path.home()
+        if not home.is_absolute() or str(home.resolve()) != str(home):
+            raise Deferred('native-identity-unknown')
+        return str(home.joinpath(*parts))
+    if not value.startswith('/'):
+        raise Deferred('native-identity-unknown')
+    return value
+
+
+def status(provider, text):
+    # Native status output is used only for these metadata fields; never persisted verbatim.
+    def field(names, *, preserve_trailing=False):
+        if preserve_trailing:
+            matches = re.findall(r'(?im)^[ \t]*[│|]?[ \t]*(?:' + names
+                                 + r')[ \t]*:[ \t]*([^\r\n]*?)(?:[│|][ \t]*)?\r?$', text)
+        else:
+            matches = re.findall(r'(?im)^\s*[│|]?\s*(?:' + names + r')\s*:\s*(.*?)\s*[│|]?\s*$', text)
+        if not matches:
+            raise Deferred('native-identity-unknown')
+        return matches[-1] if preserve_trailing else matches[-1].strip()
+    ident = field('Session|Session ID')
+    try:
+        if str(uuid.UUID(ident)) != ident.lower():
+            raise ValueError()
+    except ValueError:
+        raise Deferred('native-identity-unknown') from None
+    displayed_cwd = field('Directory|cwd|Working directory', preserve_trailing=True)
+    cwd = receiver_cwd(displayed_cwd if displayed_cwd.startswith('~') else displayed_cwd.strip())
+    permission = field('Permissions|Permission mode')
+    if not token(permission):
+        raise Deferred('native-identity-unknown')
+    result = {'sessionId': ident, 'cwd': cwd, 'permissions': permission}
+    if provider == 'claude':
+        result['nativeVersion'] = field('Version')
+        account_labels = ('Login method', 'Organization', 'Email')
+        has_account = any(re.search(r'(?m)^[ \t]*' + label + ':', text) for label in account_labels)
+        if (result['nativeVersion'] == '2.1.332'
+                or result['nativeVersion'] in ('2.1.319', '2.1.329') and has_account):
+            for label in ('Version', 'Session(?: ID)?', 'Directory|cwd|Working directory', 'Permissions|Permission mode'):
+                if len(re.findall(r'(?im)^[ \t]*(?:' + label + r')[ \t]*:', text)) != 1:
+                    raise Deferred('claude-status-metadata-ambiguous')
+            # Keep only an opaque equality proof, never account values. These
+            # labels belong to the freshly bounded supported status card.
+            account = []
+            for label in account_labels:
+                values = re.findall(r'(?m)^[ \t]*' + label + r':[ \t]*(\S[^\r\n]*)$', text)
+                if len(values) != 1 or not token(values[0]):
+                    raise Deferred('claude-account-unverified')
+                account.append(values[0].strip())
+            result['accountProof'] = hashlib.sha256(json.dumps(account).encode()).hexdigest()
+    elif provider == 'codex':
+        versions = codex_versions(text)
+        result['nativeVersion'] = versions[-1] if versions else None
+    result['resumeMode'] = observed_resume_mode(provider, result)
+    return result
+
+
+def observed_resume_mode(provider, native):
+    """Only native modes with an observed permission-preserving launch contract."""
+    if (provider == 'codex' and native.get('nativeVersion') in CODEX_RESUME_VERSIONS
+            and native.get('permissions') == 'Full Access'):
+        return 'codex-full-access'
+    if (provider == 'claude' and native.get('nativeVersion') in CLAUDE_NATIVE_VERSIONS
+            and native.get('permissions') == 'bypass permissions'):
+        return 'claude-bypass-permissions'
+    return None
+
+
+def resume_command(provider, native, *, installed_version, executable=None):
+    """Construct fixed argv from observed native metadata, never stored commands."""
+    native = obj(native)
+    mode = observed_resume_mode(provider, native)
+    if mode is None or native.get('resumeMode') != mode:
+        raise Deferred('native-resume-permissions-unverified')
+    if not ((provider == 'codex' and installed_version in CODEX_RESUME_VERSIONS) or
+            (provider == 'claude' and installed_version in CLAUDE_LAUNCH_VERSIONS)):
+        raise Deferred('native-resume-version-unverified')
+    ident = native.get('sessionId')
+    try:
+        if not isinstance(ident, str) or str(uuid.UUID(ident)) != ident.lower():
+            raise ValueError()
+    except (ValueError, TypeError, AttributeError):
+        raise Deferred('native-identity-unknown') from None
+    if mode == 'codex-full-access':
+        args = ['codex', 'resume', ident, '--dangerously-bypass-approvals-and-sandbox']
+        if installed_version == '0.172.0':
+            args.extend(['--no-alt-screen', 'Reply only TR_KIT_RESTART_READY. Do not use tools or perform any other action.'])
+    else:
+        args = ['claude', '--dangerously-skip-permissions', '--resume', ident]
+        if executable is not None:
+            expected = Path.home() / '.local/share/claude/versions' / installed_version
+            if installed_version != '2.1.332' or executable != str(expected):
+                raise Deferred('native-resume-executable-unverified')
+            args[0] = executable
+    return shlex.join(args)
+
+
+class Journal:
+    """Descriptor-anchored journal: no symlink traversal, replacement, or replay."""
+    def __init__(self, root, operation):
+        self.root = Path(root).absolute()
+        self.operation = str(uuid.UUID(operation))
+        self.name = self.operation + '.json'
+        self.path = self.root / self.name
+        self.events = []
+        self.directory_fd = self.lock_fd = self.record_fd = None
+
+    def __enter__(self):
+        if not all(hasattr(os, flag) for flag in ('O_NOFOLLOW', 'O_DIRECTORY')):
+            raise Deferred('journal-no-follow-unsupported-on-host')
+        if '..' in self.root.parts:
+            raise Deferred('unsafe-journal-path')
+        try:
+            # Open each parent relative to its already-open directory. Checking a
+            # resolved path before opening would leave a symlink replacement race.
+            directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                for part in self.root.parts[1:]:
+                    try:
+                        os.mkdir(part, 0o700, dir_fd=directory)
+                    except FileExistsError:
+                        pass
+                    child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+                    os.close(directory)
+                    directory = child
+                self.directory_fd = directory
+            except BaseException:
+                os.close(directory)
+                raise
+            info = os.fstat(directory)
+            if info.st_uid != os.getuid() or info.st_mode & 0o022:
+                raise Deferred('unsafe-journal-directory')
+            try:
+                self.lock_fd = os.open('apply.lock', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                       0o600, dir_fd=directory)
+            except FileExistsError:
+                raise Deferred('apply-locked-inspect-journal') from None
+            if self.name in os.listdir(directory):
+                raise Deferred('operation-already-started-inspect-journal')
+            for name in os.listdir(directory):
+                if not name.endswith('.json'):
+                    continue
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+                with os.fdopen(fd) as f:
+                    info = os.fstat(f.fileno())
+                    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 2_000_000:
+                        raise Deferred('unsafe-journal-record')
+                    data = obj(json.load(f))
+                events = data.get('events')
+                if not isinstance(events, list) or not events or obj(events[-1]).get('phase') != 'finished':
+                    raise Deferred('unresolved-operation-inspect-journal')
+            self.record_fd = os.open(self.name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                     0o600, dir_fd=directory)
+            self.record('started')
+            return self
+        except BaseException as error:
+            self.__exit__(None, None, None)
+            if isinstance(error, Deferred):
+                raise
+            if isinstance(error, (OSError, ValueError, TypeError)):
+                raise Deferred('unsafe-or-unreadable-journal') from None
+            raise
+
+    def record(self, phase, **values):
+        info = os.fstat(self.record_fd)
+        entry = os.stat(self.name, dir_fd=self.directory_fd, follow_symlinks=False)
+        if (not stat.S_ISREG(entry.st_mode) or info.st_nlink != 1 or
+                (entry.st_dev, entry.st_ino) != (info.st_dev, info.st_ino)):
+            raise Deferred('journal-record-replaced')
+        self.events.append({'phase': phase, **values})
+        data = json.dumps({'operationId': self.operation, 'events': self.events}).encode()
+        os.lseek(self.record_fd, 0, os.SEEK_SET)
+        os.ftruncate(self.record_fd, 0)
+        while data:
+            written = os.write(self.record_fd, data)
+            data = data[written:]
+        os.fsync(self.record_fd)
+        os.fsync(self.directory_fd)
+
+    def __exit__(self, *args):
+        if self.record_fd is not None:
+            os.close(self.record_fd)
+            self.record_fd = None
+        if self.lock_fd is not None:
+            try:
+                actual = os.stat('apply.lock', dir_fd=self.directory_fd, follow_symlinks=False)
+                own = os.fstat(self.lock_fd)
+                if (actual.st_dev, actual.st_ino) == (own.st_dev, own.st_ino):
+                    os.unlink('apply.lock', dir_fd=self.directory_fd)
+            except FileNotFoundError:
+                pass
+            os.close(self.lock_fd)
+            self.lock_fd = None
+        if self.directory_fd is not None:
+            os.close(self.directory_fd)
+            self.directory_fd = None
+
+
+def guard(client, plan, target, self_pane, modal=False):
+    installation_guard(target)
+    wait_idle(client, target)
+    return passive_guard(client, plan, target, self_pane, modal=modal)
+
+
+def recovery_exception_preflight(client):
+    """Finish long exception lookups before the final Orca/target observations."""
+    check = getattr(client, 'recovery_exception_check', None)
+    if check is not None:
+        check(native_query=True)
+
+
+def passive_guard(client, plan, target, self_pane, modal=False):
+    """Same runtime/selection/state checks without a new native inventory wait."""
+    recovery_exception_preflight(client)
+    ts, ps = client.inventory()
+    if target.get('requireCompleteInventory'):
+        for inventory in (ts, ps):
+            if (inventory.get('truncated') is not False
+                    or 'local' not in obj(inventory.get('hostScope')).get('hostIds', [])):
+                raise Deferred('inventory-incomplete')
+    if client.runtime != plan['runtimeId']:
+        raise Deferred('runtime-changed')
+    terms = array(ts.get('terminals'))
+    self_found = self_pane == plan['selfPane'] and sum(pane(t) == self_pane for t in terms) == 1
+    matches = [t for t in terms if t.get('handle') == target['handle']]
+    if len(matches) != 1 or fingerprint(matches[0]) != target['identity']:
+        raise Deferred('target-changed')
+    management_self_check(client, terms, ps, terminal_inventory=ts)
+    t, read = client.observe(target['handle'])
+    if fingerprint(t) != target['identity']:
+        raise Deferred('target-changed')
+    verified = native_provider_check(client, target, t)
+    if eligible(t, read, ps, self_pane, self_found, tui_idle=True, modal=modal,
+                verified_provider=verified) != target['provider']:
+        raise Deferred('provider-changed')
+    management_self_check(client, process_only=True)
+    native_provider_check(client, target)
+    return t, read
+
+
+def send(client, journal, target, text, phase):
+    # Persist before calling the transport. Crash/timeout means no automatic resend.
+    if phase == 'exact-resume':
+        target_shell_check(client, target)
+    management_self_check(client, process_only=True)
+    if phase != 'exact-resume':
+        native_provider_check(client, target)
+    check = target.get('restartCheck')
+    if check is not None and phase in ('normal-exit', 'exact-resume'):
+        check(phase)
+    journal.record('sending', handle=target['handle'], step=phase)
+    if phase == 'exact-resume':
+        target_shell_check(client, target)
+    management_self_check(client, process_only=True)
+    if phase != 'exact-resume':
+        native_provider_check(client, target)
+    check = target.get('restartCheck')
+    if check is not None and phase in ('normal-exit', 'exact-resume'):
+        check(phase)
+    result = client.call('terminal', 'send', '--terminal', target['handle'], '--text', text, '--enter')
+    receipt = obj(result.get('send'))
+    mutation = obj(result.get('mutation'))
+    request = mutation.get('requestId')
+    if receipt.get('accepted') is not True or not token(request):
+        raise Deferred('send-receipt-unknown')
+    prompt = receipt.get('prompt')
+    if prompt is not None and obj(prompt).get('processIncarnation') != target['identity']['incarnationId']:
+        raise Deferred('send-incarnation-mismatch')
+    journal.record('accepted', handle=target['handle'], step=phase, requestId=request)
+    if phase == 'exact-resume':
+        client.target_shell_proof = None
+    return result
+
+
+def wait_idle(client, target):
+    result = client.call('terminal', 'wait', '--terminal', target['handle'], '--for', 'tui-idle', '--timeout-ms', '10000')
+    if obj(result.get('wait')).get('satisfied') is not True:
+        raise Deferred('idle-wait-unsatisfied')
+
+
+def wait_resumed(client, plan, target, self_pane):
+    """Read-only bounded handshake for a resumed native hook row."""
+    wait_idle(client, target)
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            guard(client, plan, target, self_pane)
+            return
+        except Deferred as error:
+            if str(error) not in ('agent-identity-unknown', 'child-state-unknown') or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.2)
+
+
+def native_status(client, plan, target, self_pane, journal, *, keep_modal=False):
+    proof = {}
+    target.pop('nativeProof', None)
+    _, fresh = native_query(client, plan, target, self_pane, journal, '/status', 'status', proof=proof, keep_modal=keep_modal)
+    identity = status(target['provider'], fresh)
+    provider_proof = target.get('nativeProviderProof')
+    if provider_proof is not None:
+        if identity['sessionId'] != provider_proof['sessionId'] or identity['cwd'] != provider_proof['cwd']:
+            raise Deferred('native-provider-session-mismatch')
+        if identity.get('nativeVersion') != Path(provider_proof['process']['executable']['path']).name:
+            raise Deferred('native-provider-source-mismatch')
+    if identity['cwd'] != target['identity']['worktreePath']:
+        raise Deferred('cwd-mismatch')
+    target['nativeProof'] = proof
+    return identity
+
+
+def output_proof(frame):
+    cursor = frame.get('latestCursor')
+    if not re.fullmatch(r'\d+', str(cursor)):
+        raise Deferred('native-response-proof-unknown')
+    return {'cursor': str(cursor), 'screenSha256': hashlib.sha256(screen(frame).encode()).hexdigest()}
+
+
+def shell_guard(client, plan, target, normal_exit):
+    installation_guard(target)
+    recovery_exception_preflight(client)
+    ts, ps = client.inventory()
+    matches = [t for t in array(ts.get('terminals')) if t.get('handle') == target['handle']]
+    if client.runtime != plan['runtimeId'] or len(matches) != 1 or fingerprint(matches[0]) != target['identity']:
+        raise Deferred('target-changed')
+    if sum(pane(t) == plan['selfPane'] for t in array(ts.get('terminals'))) != 1:
+        raise Deferred('self-unidentified')
+    management_self_check(client, array(ts.get('terminals')), ps, terminal_inventory=ts)
+    t, read = client.observe(target['handle'])
+    if fingerprint(t) != target['identity'] or t.get('agentWait') is not None or t.get('connected') is not True or t.get('writable') is not True or t.get('orphaned') is not False:
+        raise Deferred('shell-unconfirmed')
+    # Require a visible empty shell prompt and no still-tracked live agent/child work.
+    text = screen(read).rstrip()
+    if read.get('draft') not in (None, ''):
+        raise Deferred('draft')
+    shell_prompt = r'[^\n]*' + re.escape(target['identity']['worktreePath']) + r'[$#]'
+    final = text.splitlines()[-1] if text else ''
+    process_proof = None
+    if final == '❯' or target.get('claudeRestart'):
+        if final != '❯' and not re.fullmatch(shell_prompt, final):
+            raise Deferred('shell-unconfirmed')
+        if getattr(client, 'remote_configured', False) or getattr(client, 'environment', None):
+            raise Deferred('target-shell-process-unsupported')
+        for inventory in (ts, ps):
+            if (inventory.get('truncated') is not False
+                    or 'local' not in obj(inventory.get('hostScope')).get('hostIds', [])):
+                raise Deferred('inventory-incomplete')
+        if sum(pane(term) == pane(t) for term in array(ts.get('terminals'))) != 1:
+            raise Deferred('target-changed')
+        process_proof = target_shell_process_proof(target['identity'])
+    elif not re.fullmatch(shell_prompt, final):
+        raise Deferred('shell-unconfirmed')
+    for w in array(ps.get('worktrees')):
+        for a in array(w.get('agents', [])):
+            if process_proof is not None and a.get('parentPaneKey') == pane(t):
+                raise Deferred('shell-unconfirmed')
+            if a.get('paneKey') != pane(t):
+                continue
+            if (a.get('state') not in ('done', 'idle') or a.get('children') or a.get('subagents') or
+                    a.get('parentPaneKey') or a.get('subagentObservation') == 'unverifiable'):
+                raise Deferred('shell-unconfirmed')
+            if obj(a.get('mainAgent')).get('state') not in ('done', 'idle'):
+                raise Deferred('shell-unconfirmed')
+            # The native program's OSC facet may disappear after its clean exit.
+            if a.get('programStatus') is not None and obj(a['programStatus']).get('state') not in ('done', 'idle'):
+                raise Deferred('shell-unconfirmed')
+    if not isinstance(normal_exit, dict) or not re.fullmatch(r'\d+', str(normal_exit.get('cursor', ''))):
+        raise Deferred('native-exit-freshness-unknown')
+    try:
+        session_id = str(uuid.UUID(normal_exit['sessionId']))
+    except (KeyError, ValueError, TypeError):
+        raise Deferred('native-exit-identity-unknown') from None
+    delta = obj(client.call('terminal', 'read', '--terminal', target['handle'], '--cursor', str(normal_exit['cursor'])).get('terminal'))
+    lines = delta.get('tail')
+    if delta.get('source') != 'stream' or not isinstance(lines, list) or any(not isinstance(line, str) for line in lines):
+        raise Deferred('native-exit-stream-unknown')
+    # This must be emitted AFTER our guarded /exit. A historical command, a
+    # launch/detection identity hint, or a changed PTY is not clean-exit evidence.
+    text = '\n'.join(lines)
+    if target.get('claudeRestart'):
+        if normal_exit.get('nativeVersion') not in CLAUDE_RESTART_SOURCE_VERSIONS:
+            raise Deferred('claude-clean-exit-contract-unverified')
+        # Only the two fixed forms from owned native observations are accepted;
+        # matched text is never executed. Stream/process/empty-shell proof stays.
+        exit_marker = (r'(?m)^[ \t]*Resume this session with:[ \t]*\n'
+                       r'[ \t]*claude(?: --dangerously-skip-permissions)? --resume ' +
+                       re.escape(session_id) + r'[ \t]*$')
+        target['restartCheck']('shell', process_proof)
+    else:
+        exit_marker = (r'To continue this session, run:?\s+codex resume\s+' +
+                       re.escape(session_id) + r'(?![A-Za-z0-9-])')
+    if not re.search(exit_marker, text):
+        raise Deferred('shell-unconfirmed')
+
+    management_self_check(client, process_only=True)
+    proof = None
+    if process_proof is not None:
+        if target_shell_process_proof(target['identity']) != process_proof or client.runtime != plan['runtimeId']:
+            raise Deferred('target-shell-process-changed')
+        proof = {'identity': dict(target['identity']), 'process': process_proof,
+                 'plan': {'runtimeId': plan['runtimeId'], 'selfPane': plan['selfPane']},
+                 'normalExit': dict(normal_exit)}
+    previous = getattr(client, 'target_shell_proof', None)
+    if previous is not None and proof != previous:
+        raise Deferred('target-shell-proof-changed')
+    if proof is not None:
+        client.target_shell_proof = proof
+    return t
+
+
+def claude_modal(text, command):
+    if re.search(r'(?im)((?<![-\w])approve\b|allow once|trust this|select an option|enter to confirm|yes, proceed)', text):
+        return False
+    if command == '/status':
+        if re.search(r'(?m)^[ \t]*Version:[ \t]*2\.1\.332[ \t]*$', text):
+            return (len(re.findall(r'(?m)^[ \t]*Version:', text)) == 1
+                    and len(re.findall(r'(?m)^[ \t]*Settings\s+Status\s+Config\s+Usage\s+Stats[ \t]*$', text)) == 1
+                    and len(re.findall(r'(?m)^[ \t]*←/→ to switch · Esc to close[ \t]*$', text)) == 1)
+        observed_close = (re.search(r'(?m)^\s*Version:\s*2\.1\.(?:329|330|331|332)\s*$', text) and
+                          re.search(r'(?m)^\s*←/→ to switch · Esc to close\s*$', text))
+        return bool(re.search(r'(?m)^\s*Settings\s+Status\s+Config\s+Usage\s+Stats\s*$', text) and
+                    ('Esc to cancel' in text or observed_close))
+    if command == '/help':
+        return bool(re.search(r'(?m)^\s*Help\s+General\s+Commands\s+Custom commands\s*$', text) and
+                    'Esc to cancel' in text)
+    return False
+
+
+def modal_key(client, plan, target, self_pane, journal, command, key, expected_proof=None):
+    _, read = guard(client, plan, target, self_pane, modal=True)
+    if expected_proof is not None and output_proof(read) != expected_proof:
+        raise Deferred('native-response-proof-changed')
+    if not claude_modal(screen(read), command):
+        raise Deferred('claude-modal-boundary-unknown')
+    management_self_check(client, process_only=True)
+    native_provider_check(client, target)
+    journal.record('sending', handle=target['handle'], step='modal-navigation')
+    if expected_proof is not None:
+        _, confirmed = passive_guard(client, plan, target, self_pane, modal=True)
+        if output_proof(confirmed) != expected_proof or not claude_modal(screen(confirmed), command):
+            raise Deferred('native-response-proof-changed')
+    management_self_check(client, process_only=True)
+    native_provider_check(client, target)
+    result = client.call('terminal', 'send', '--terminal', target['handle'], '--text', key)
+    receipt = obj(result.get('send'))
+    if (receipt.get('handle') != target['handle'] or receipt.get('accepted') is not True or
+            type(receipt.get('bytesWritten')) is not int or receipt['bytesWritten'] != len(key.encode('utf-8'))):
+        raise Deferred('send-receipt-unknown')
+    metadata = {'handle': receipt['handle'], 'accepted': True, 'bytesWritten': receipt['bytesWritten']}
+    if 'prompt' in receipt:
+        incarnation = obj(receipt['prompt']).get('processIncarnation')
+        if incarnation != target['identity']['incarnationId']:
+            raise Deferred('send-incarnation-mismatch')
+        metadata['processIncarnation'] = incarnation
+    if 'mutation' in result:
+        request = obj(result['mutation']).get('requestId')
+        if not token(request):
+            raise Deferred('send-receipt-unknown')
+        metadata['requestId'] = request
+    journal.record('accepted', step='modal-navigation', receiptKind='raw-key', **metadata)
+    wait_idle(client, target)
+    # After a response-bound close, do not put another long inventory lookup
+    # between that response and its closed frame. The full guard immediately
+    # before the key has already checked installation and the original proof.
+    check = passive_guard if expected_proof is not None else guard
+    return check(client, plan, target, self_pane, modal=True)[1]
+
+
+def claude_permission(text):
+    fields = re.findall(r'(?im)^\s*(?:Permission mode|Permissions)\s*:\s*(.+)$', text)
+    if fields:
+        return fields[-1].strip()
+    if re.search(r'(?m)^\s*⏵⏵ bypass permissions on \(shift\+tab to cycle\)\s*$', text):
+        return 'bypass permissions'
+    versions = re.findall(r'Claude Code v([A-Za-z0-9][A-Za-z0-9.+_-]{0,63})', text)
+    if (re.search(r'(?m)^[ \t]*▐▛███▛█   Claude Code v2\.1\.(?:330|332)[ \t]*$', text)
+            and versions and len(versions) == text.count('Claude Code v')
+            and len(set(versions)) == 1
+            and all(version in ('2.1.330', '2.1.332') for version in versions)
+            and re.search(r'(?m)^\s*⏵⏵ bypass permissions on \(shift\+tab to cycle\) · ← for agents\s*$', text)):
+        return 'bypass permissions'
+    raise Deferred('claude-permissions-unknown')
+
+
+def current_status_response(provider, text):
+    """Bound metadata to the latest visible native response, never scrollback."""
+    lines = text.splitlines()
+    prompt = '›' if provider == 'codex' else '❯'
+    start = 0
+    other_command = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        # A later startup/header invalidates metadata above it. Claude's Version
+        # field belongs to its status body and is deliberately not a header.
+        if ('OpenAI Codex (v' in line or 'Claude Code v' in line or
+                (provider == 'claude' and re.fullmatch(r'\s*Settings\s+Status\s+Config\s+Usage\s+Stats\s*', line))):
+            start = index
+            other_command = False
+        if ((stripped.startswith(prompt + ' ') and
+                not (provider == 'codex' and stripped == '› Ask Codex to do anything'))
+                or (provider == 'codex' and stripped.startswith('/'))):
+            other_command = stripped not in (prompt + ' /status', '/status')
+            start = index + 1
+        if re.search(r'(?:To continue this session|codex resume|claude .*--resume)', line):
+            start = index + 1
+            other_command = False
+    if other_command:
+        raise Deferred('native-response-boundary-changed')
+    return '\n'.join(lines[start:])
+
+
+def codex_status_stream_text(fresh, previous, current, proved_response):
+    """Remove one exact native autocomplete rendering only after screen proof.
+
+    Orca's ANSI-stripped stream can flatten the /status completion popup and
+    composer into one line. This is UI, not a submitted /statusline command.
+    Match the official 0.172.0 captions, exact /status composer and an observed
+    footer prefix. Unknown lines and actual subsequent commands remain intact.
+    """
+    identity = codex_screen_identity(proved_response)
+    if identity['nativeVersion'] != '0.172.0':
+        return fresh
+    models = re.findall(r'^[ \t]*Model:[ \t]*([A-Za-z0-9][A-Za-z0-9_.-]*)'
+                        r'(?:[ \t]+\([^\r\n]*\))?[ \t]*$', proved_response, re.MULTILINE)
+    if len(models) != 1:
+        return fresh
+    directories = {identity['cwd']}
+    home = str(Path.home())
+    if identity['cwd'] == home:
+        directories.add('~')
+    elif identity['cwd'].startswith(home + '/'):
+        directories.add('~' + identity['cwd'][len(home):])
+    compact = lambda value: re.sub(r'[ \t]+', ' ', value.strip(' \t'))
+    popup = ('› /status show current session configuration and token usage '
+             '/statusline configure which items appear in the status line › /status ')
+    allowed = set()
+    idle = ('›', '› Ask Codex to do anything')
+    for text in (previous, current):
+        lines = text.splitlines()
+        prompts = [i for i, line in enumerate(lines) if line.strip() in idle]
+        if not prompts:
+            continue
+        footer = [line for line in lines[prompts[-1]+1:] if line.strip()]
+        if not 1 <= len(footer) <= 2:
+            continue
+        first = compact(footer[0])
+        prefixes = [models[0] + ' default · ' + directory + ' · ' for directory in directories]
+        matching = [prefix for prefix in prefixes if first.startswith(prefix)]
+        if len(matching) != 1:
+            continue
+        prefix = matching[0]
+        title = first[len(prefix):]
+        if (not title or len(title) > 512
+                or re.search(r'[\x00-\x1f\x7f›❯]', title)
+                or len(footer) == 2 and compact(footer[1]) != '← for agents · ? for shortcuts'):
+            continue
+        for end in range(1, len(footer)+1):
+            allowed.add(popup + compact(' '.join(footer[:end])))
+    lines = fresh.splitlines()
+    visible = [i for i, line in enumerate(lines) if line.strip()]
+    if (len(visible) < 3 or compact(lines[visible[0]]) not in allowed
+            or lines[visible[1]].strip() != '/status'
+            or lines[visible[2]].strip() != '>_ OpenAI Codex (v0.172.0)'):
+        return fresh
+    return '\n'.join(line for i, line in enumerate(lines) if i != visible[0])
+
+
+def codex_screen_status(previous, current):
+    """Prove an appended /status card from ordered content, not a repaint hash.
+
+    Full retained history is supported. A cropped repeat additionally needs a
+    unique suffix containing the previous response's Session line. Codex may
+    retain the first historical user prompt above that suffix.
+    """
+    idle = ('›', '› Ask Codex to do anything')
+    if previous == current:
+        return None
+    before, after = previous.splitlines(), current.splitlines()
+    prompts = [i for i, line in enumerate(before) if line.strip() in idle]
+    if not prompts:
+        return None
+    # Only UI footer may be discarded. An already visible card/command after
+    # the old idle prompt cannot later acquire freshness by moving above it.
+    for line in before[prompts[-1]+1:]:
+        if (line.strip().startswith(('/', '›')) or 'OpenAI Codex (v' in line
+                or 'Claude Code v' in line
+                or re.match(r'(?i)^[ \t]*[│|]?[ \t]*(?:Session(?: ID)?|Directory|cwd|Working directory|Permissions|Permission mode)[ \t]*:', line)
+                or re.search(r'(?:To continue this session|codex resume|claude .*--resume)', line)):
+            return None
+    history = before[:prompts[-1]]
+    # Empty prompts, blank lines and a command echo do not anchor history.
+    if not any(line.strip() and line.strip() not in (*idle, '/status', '› /status')
+               for line in history):
+        return None
+    markers = [i for i, line in enumerate(after) if line.strip() in ('/status', '› /status')]
+    if not markers:
+        return None
+    index = markers[-1]
+    retained = after[:index]
+    if retained != history:
+        # A crop cannot be inferred from arbitrary shared text. Anchor it to
+        # the complete previous response and require one exact old occurrence.
+        try:
+            old = current_status_response('codex', '\n'.join(history))
+            old_identity = codex_screen_identity(old)
+        except Deferred:
+            return None
+        # Startup UI may precede the first request before Codex pins that
+        # request above a cropped card. It must be the exact unique first
+        # ordinary request, never a later request or a slash-command echo.
+        prompt_lines = [line for line in history if line.lstrip().startswith('› ')
+                        and line.strip() not in idle and not line.lstrip().startswith('› /')]
+        pinned_line = prompt_lines[0] if prompt_lines else None
+        pinned = int(pinned_line is not None and history.count(pinned_line) == 1)
+        overlaps = []
+        for keep in set((0, pinned)):
+            if retained[:keep] != ([pinned_line] if keep else []):
+                continue
+            suffix = retained[keep:]
+            if len(suffix) < 2 or not any(re.fullmatch(
+                    r'[ \t]*[│|]?[ \t]*Session(?: ID)?[ \t]*:[ \t]*'
+                    + re.escape(old_identity['sessionId']) + r'[ \t]*[│|]?[ \t]*', line,
+                    flags=re.IGNORECASE) for line in suffix):
+                continue
+            starts = [i for i in range(keep, len(history)) if history[i:i+len(suffix)] == suffix]
+            if len(starts) == 1 and starts[0] + len(suffix) == len(history):
+                overlaps.append((keep, starts[0]))
+        if len(overlaps) != 1:
+            return None
+    response = after[index+1:]
+    # The marker must immediately precede a supported native header. Never
+    # search past intervening ordinary commands, startup or resume output.
+    if not response or not re.fullmatch(
+            r'[ \t]*>_ OpenAI Codex \(v(?:' + '|'.join(map(re.escape, CODEX_RESUME_VERSIONS))
+            + r')\)[ \t]*', response[0]):
+        return None
+    ends = [i for i, line in enumerate(response) if line.strip() in idle]
+    if not ends:
+        return None
+    end = ends[0]
+    for i, line in enumerate(response):
+        stripped = line.strip()
+        if ((stripped.startswith('›') and not (i == end and stripped in idle))
+                or stripped.startswith('/') or (i and 'OpenAI Codex (v' in line)
+                or 'Claude Code v' in line
+                or re.search(r'(?:To continue this session|codex resume|claude .*--resume)', line)):
+            raise Deferred('native-response-boundary-changed')
+    fresh = '\n'.join(response[:end])
+    codex_screen_identity('\n'.join(response))
+    codex_screen_identity(fresh)
+    return fresh
+
+
+def codex_screen_identity(text, expected=None):
+    """Strict card fields, or agreement of every available stream identity field."""
+    labels = (('Session|Session ID', 'Session', 'sessionId'),
+              ('Directory|cwd|Working directory', 'Directory', 'cwd'),
+              ('Permissions|Permission mode', 'Permissions', 'permissions'))
+    completed = text
+    for names, label, key in labels:
+        count = len(re.findall(r'(?im)^[ \t]*[│|]?[ \t]*(?:' + names + r')[ \t]*:', text))
+        # status() accepts \s (including Unicode/newlines). Such fields must
+        # never be mistaken for absent fields and replaced by screen values.
+        parsed_count = len(re.findall(r'(?im)^\s*[│|]?\s*(?:' + names + r')\s*:', text))
+        if parsed_count != count:
+            raise Deferred('native-response-identity-malformed')
+        if count > 1:
+            raise Deferred('native-response-identity-ambiguous')
+        if count == 1:
+            values = re.findall(r'(?im)^[ \t]*[│|]?[ \t]*(?:' + names
+                                + r')[ \t]*:[ \t]*([^\r\n]*)\r?$', text)
+            if len(values) != 1 or not values[0].strip().strip('│|').strip():
+                raise Deferred('native-identity-unknown')
+        if count == 0:
+            if expected is None:
+                raise Deferred('native-identity-unknown')
+            completed += '\n' + label + ': ' + expected[key]
+    versions = codex_versions(text)
+    if len(versions) > 1 or len(versions) != text.count('OpenAI Codex (v'):
+        raise Deferred('native-response-identity-ambiguous')
+    if versions and versions[0] not in CODEX_RESUME_VERSIONS:
+        raise Deferred('native-response-version-unknown')
+    if not versions:
+        if expected is None:
+            raise Deferred('native-identity-unknown')
+        completed += '\nOpenAI Codex (v' + expected['nativeVersion'] + ')'
+    identity = status('codex', completed)
+    if expected is not None and identity != expected:
+        raise Deferred('native-response-identity-changed')
+    return identity
+
+
+def native_query(client, plan, target, self_pane, journal, command, phase, completion=None, proof=None, keep_modal=False):
+    def finish_response(frame, fresh):
+        # Identity, current boundary and proof must refer to the same observation.
+        # A stream delta cannot give an old response authority over a newer screen.
+        if command == '/status':
+            fresh = current_status_response(target['provider'], fresh)
+            actual = status(target['provider'], fresh)
+            visible = screen(frame)
+            if (target['provider'] == 'claude' and actual.get('nativeVersion') == '2.1.332'
+                    and not claude_modal(visible, command)):
+                raise Deferred('claude-modal-boundary-unknown')
+            if claude_modal(visible, command):
+                visible += '\nPermission mode: ' + claude_permission(previous_text)
+            current_identity = status(target['provider'], current_status_response(target['provider'], visible))
+            if actual != current_identity:
+                raise Deferred('native-response-identity-changed')
+        if proof is not None:
+            original = output_proof(frame)
+            _, confirmed = passive_guard(client, plan, target, self_pane,
+                                         modal=claude_modal(screen(frame), command))
+            if output_proof(confirmed) != original:
+                raise Deferred('native-response-proof-changed')
+            proof.update(original)
+        return screen(frame), fresh
+    _, previous = guard(client, plan, target, self_pane)
+    if target['provider'] == 'claude' and command == '/status':
+        deadline = time.monotonic() + 3
+        for attempt in range(12):
+            try:
+                claude_permission(screen(previous))
+                break
+            except Deferred as error:
+                if (str(error) != 'claude-permissions-unknown' or attempt == 11
+                        or time.monotonic() >= deadline):
+                    raise
+                time.sleep(0.05)
+                _, previous = guard(client, plan, target, self_pane)
+    cursor = previous.get('latestCursor')
+    if cursor is None:
+        raise Deferred('native-response-freshness-unknown')
+    previous_text = screen(previous)
+    wire_command = command
+    if (target['provider'] == 'codex' and command == '/status'
+            and codex_versions(previous_text)[-1:] == ['0.172.0']):
+        wire_command += ' '
+    send(client, journal, target, wire_command, phase)
+    wait_idle(client, target)
+    if target['provider'] == 'claude':
+        marker = '❯ ' + command
+        old_count = sum(line.strip() == marker for line in previous_text.splitlines())
+        deadline = time.monotonic() + 3
+        pending = None
+        for attempt in range(12):
+            _, current = passive_guard(client, plan, target, self_pane, modal=True)
+            text = screen(current)
+            if claude_modal(text, command):
+                break
+            idle_screen('claude', current)
+            echoes = [line.strip() for line in text.splitlines()
+                      if line.lstrip().startswith('❯') and line.strip() != '❯']
+            if sum(line == marker for line in echoes) > old_count:
+                if echoes[-1] != marker:
+                    raise Deferred('native-response-boundary-changed')
+                break
+            if current.get('latestCursor') not in (None, cursor):
+                delta = obj(client.call('terminal', 'read', '--terminal', target['handle'], '--cursor', str(cursor)).get('terminal'))
+                tail = delta.get('tail')
+                if delta.get('source') != 'stream' or not isinstance(tail, list) or any(not isinstance(x, str) for x in tail):
+                    raise Deferred('native-response-output-unknown')
+                fresh = '\n'.join(tail)
+                try:
+                    if completion is not None:
+                        completion[0](fresh)
+                    elif command == '/status':
+                        status('claude', fresh)
+                    elif command == '/help':
+                        if not re.search(r'(?m)^\s*/reload-plugins(?:\s|$)', fresh):
+                            raise Deferred('claude-reload-command-unsupported')
+                    elif not fresh.strip():
+                        raise Deferred('native-response-output-unknown')
+                except Deferred as error:
+                    if completion is not None and str(error) != completion[1]:
+                        raise
+                    pending = error
+                else:
+                    return finish_response(current, fresh)
+            if attempt == 11 or time.monotonic() >= deadline:
+                raise pending or Deferred('native-response-freshness-unknown')
+            journal.record('awaiting-native-response', handle=target['handle'], step=phase,
+                           expectedEchoAdded=False, streamComplete=False)
+            time.sleep(0.05)
+        text = screen(current)
+        if claude_modal(text, command):
+            if claude_modal(previous_text, command) or text == previous_text:
+                raise Deferred('native-response-freshness-unknown')
+            if command == '/status':
+                output = text + '\nPermission mode: ' + claude_permission(previous_text)
+            else:
+                # The Commands tab and list are bounded native UI navigation.
+                current = modal_key(client, plan, target, self_pane, journal, command, '\x1b[C')
+                output = ''
+                for _ in range(16):
+                    frame = screen(current)
+                    if not claude_modal(frame, command):
+                        raise Deferred('claude-modal-boundary-unknown')
+                    if 'Browse default commands' in frame:
+                        output += '\n' + frame
+                        if re.search(r'(?m)^\s*(?:❯\s*)?/reload-plugins(?:\s|$)', frame):
+                            break
+                    current = modal_key(client, plan, target, self_pane, journal, command, '\x1b[B' * 10)
+                else:
+                    raise Deferred('claude-reload-command-unsupported')
+            # Keep the exact open status frame only for the absence-proof path.
+            # Never bind its UUID to the frame obtained after Esc.
+            if command == '/status' and keep_modal:
+                target['ownedStatusModal'] = output_proof(current)
+            response = finish_response(current, output)
+            if command == '/status' and keep_modal:
+                return response
+            closed = modal_key(client, plan, target, self_pane, journal, command, '\x1b',
+                               expected_proof=output_proof(current))
+            idle_screen(target['provider'], closed)
+            if claude_modal(screen(closed), command):
+                raise Deferred('claude-modal-close-unconfirmed')
+            return screen(closed), output
+        idle_screen('claude', current)
+        # For screen-only responses require a new latest command echo, then use
+        # only the response bounded by that echo and the next empty prompt.
+        marker = '❯ ' + command
+        lines = text.splitlines()
+        indices = [i for i, line in enumerate(lines) if line.strip() == marker]
+        if indices:
+            index = indices[-1]
+            old_count = sum(line.strip() == marker for line in previous_text.splitlines())
+            if len(indices) <= old_count and current.get('latestCursor') == cursor:
+                raise Deferred('native-response-freshness-unknown')
+            response = []
+            for line in lines[index + 1:]:
+                if line.strip() == '❯':
+                    break
+                response.append(line)
+            fresh = '\n'.join(response)
+            if completion is not None and len(indices) > old_count:
+                return claude_complete_response(client, plan, target, self_pane,
+                                                command, current, fresh, *completion)
+            if fresh.strip() and (len(indices) > old_count or fresh not in previous_text):
+                return finish_response(current, fresh)
+    else:
+        # Acknowledgement/idle can precede rendering. Keep the original cursor
+        # and poll only passive observations; never repeat input or inventory.
+        # Include the full passive guard and coherent stream read in the budget.
+        deadline = time.monotonic() + CODEX_STATUS_RESPONSE_TIMEOUT
+        pending = Deferred('native-response-freshness-unknown')
+        for attempt in range(60):
+            if time.monotonic() >= deadline:
+                raise pending
+            _, current = passive_guard(client, plan, target, self_pane)
+            screen_fresh = None
+            if command == '/status':
+                try:
+                    screen_fresh = codex_screen_status(previous_text, screen(current))
+                except Deferred as error:
+                    if str(error) != 'native-identity-unknown':
+                        raise
+                    pending = error
+            # Cursor progress can precede screen rendering. An unchanged old
+            # ordinary-command frame has no new response boundary yet.
+            historical_boundary = False
+            try:
+                current_status_response(target['provider'], screen(current))
+            except Deferred:
+                if screen(current) != previous_text:
+                    raise
+                historical_boundary = True
+            if not historical_boundary and (screen_fresh is not None or current.get('latestCursor') not in (None, cursor)):
+                delta = obj(client.call('terminal', 'read', '--terminal', target['handle'], '--cursor', str(cursor)).get('terminal'))
+                tail = delta.get('tail')
+                if delta.get('source') != 'stream' or not isinstance(tail, list) or any(not isinstance(x, str) for x in tail):
+                    raise Deferred('native-response-output-unknown')
+                fresh = '\n'.join(tail)
+                if screen_fresh is not None:
+                    fresh = codex_status_stream_text(fresh, previous_text, screen(current), screen_fresh)
+                    # Even an unchanged cursor must expose a well-formed stream
+                    # read. Empty/partial identity is permitted only because the
+                    # screen independently proved a new complete boundary.
+                    current_status_response('codex', fresh)
+                    if '\x1b' in fresh:
+                        raise Deferred('native-response-output-unknown')
+                    if (any(line.strip().startswith('/') and line.strip() != '/status'
+                            for line in fresh.splitlines())
+                            or any(line.strip().startswith('›') and line.strip() not in
+                                   ('›', '› /status', '› Ask Codex to do anything')
+                                   for line in fresh.splitlines())
+                            or 'Claude Code v' in fresh
+                            or re.search(r'(?:To continue this session|codex resume|claude .*--resume)', fresh)):
+                        raise Deferred('native-response-boundary-changed')
+                    codex_screen_identity(fresh, expected=codex_screen_identity(screen_fresh))
+                    response = finish_response(current, screen_fresh)
+                    if time.monotonic() >= deadline:
+                        raise Deferred('native-response-deadline')
+                    return response
+                try:
+                    response = finish_response(current, fresh)
+                except Deferred as error:
+                    if str(error) != 'native-identity-unknown':
+                        raise
+                    pending = error
+                else:
+                    if time.monotonic() >= deadline:
+                        raise Deferred('native-response-deadline')
+                    return response
+            if attempt == 59 or time.monotonic() >= deadline:
+                raise pending
+            journal.record('awaiting-native-response', handle=target['handle'], step=phase)
+            time.sleep(0.05)
+    if current.get('latestCursor') in (None, cursor):
+        raise Deferred('native-response-freshness-unknown')
+    delta = obj(client.call('terminal', 'read', '--terminal', target['handle'], '--cursor', str(cursor)).get('terminal'))
+    tail = delta.get('tail')
+    if delta.get('source') != 'stream' or not isinstance(tail, list) or any(not isinstance(x, str) for x in tail):
+        raise Deferred('native-response-output-unknown')
+    fresh = '\n'.join(tail)
+    if completion is not None:
+        # Stream freshness cannot bind a later screen echo: validate this delta only.
+        completion[0](fresh)
+    idle_screen(target['provider'], current)
+    return finish_response(current, fresh)
+
+
+def claude_plugin_listing(text, inventory, native_version=None):
+    enabled = [p for p in inventory['plugins'] if p['enabled']]
+    expected = {p['id']: p for p in enabled}
+    if len(expected) != len(enabled):
+        raise Deferred('claude-runtime-plugin-list-ambiguous')
+    found = {}
+    number = r'(?:0|[1-9][0-9]*)'
+    prerelease = rf'(?:{number}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+    build = r'[0-9A-Za-z-]+'
+    version = rf'{number}\.{number}\.{number}(?:-{prerelease}(?:\.{prerelease})*)?(?:\+{build}(?:\.{build})*)?'
+    scope = r'user|project|local|managed|session|synced'
+    lines = text.splitlines()
+    footer_seen = False
+    for index, line in enumerate(lines):
+        ids = re.findall(r'(?<![\w.-])[A-Za-z0-9][A-Za-z0-9_.-]*@[A-Za-z0-9_.-]+', line)
+        if not ids:
+            stripped = line.strip()
+            if re.fullmatch(r'[─━╌═-]+', stripped):
+                continue
+            # Observed Claude2.1.322 chrome: complete list, one known hint, divider.
+            following = next((s.strip() for s in lines[index + 1:] if s.strip()), '')
+            if (not footer_seen and set(found) == set(expected) and
+                    re.fullmatch(r'\s{2,}(?:◐ medium · /effort|'
+                                 r'Scroll wheel is sending arrow keys · use PgUp/PgDn to scroll)\s*', line) and
+                    re.fullmatch(r'[─━╌═-]+', following)):
+                footer_seen = True
+                continue
+            if (not stripped or re.fullmatch(r'(?:⎿\s*)?Installed plugins:', stripped) or
+                    (not expected and stripped == 'No plugins installed.')):
+                continue
+            raise Deferred('claude-runtime-plugin-list-unknown')
+        if len(ids) != 1 or ids[0] not in expected or ids[0] in found:
+            raise Deferred('claude-runtime-plugin-list-mismatch')
+        ident = ids[0]
+        prefix = r'^\s*(?:[•*-]\s*)?' + re.escape(ident) + r'\s+'
+        match = (re.fullmatch(prefix + rf'\(v({version}),\s*({scope})\)\s*✔\s*enabled\s*', line) or
+                 re.fullmatch(prefix + rf'v?({version})\s+({scope})\s+enabled\s*', line))
+        if match is None and native_version == '2.1.331':
+            match = re.fullmatch(prefix + rf'\(v({version}),\s*({scope})\)\s*✔\s+on\s*', line)
+        if match is None or match[2] != expected[ident]['scope']:
+            raise Deferred('claude-runtime-plugin-list-mismatch')
+        found[ident] = match[1]
+    if set(found) != set(expected) or (not expected and 'No plugins installed.' not in text):
+        raise Deferred('claude-runtime-plugin-list-unknown')
+    return {ident + ':' + expected[ident]['scope']: value for ident, value in found.items()}
+
+
+def claude_reload_summary(text, inventory):
+    if re.search(r'(?i)(errors? during load|dependencies|--force|not available|isn.t available|failed|refused)', text):
+        raise Deferred('claude-reload-refused-or-partial')
+    pattern = (r'Reloaded:\s*(\d+) plugins?\s*[·|]\s*(\d+) skills?\s*[·|]\s*'
+               r'(\d+) agents?\s*[·|]\s*(\d+) hooks?\s*[·|]\s*'
+               r'(\d+) plugin MCP servers?\s*[·|]\s*(\d+) plugin LSP servers?')
+    matches = re.findall(pattern, text)
+    if not matches:
+        raise Deferred('claude-reload-completion-unknown')
+    counts = [int(value) for value in matches[-1]]
+    if counts[0] != sum(p['enabled'] for p in inventory['plugins']):
+        raise Deferred('claude-reloaded-plugin-count-mismatch')
+    return dict(zip(('plugins', 'skills', 'agents', 'hooks', 'mcpServers', 'lspServers'), counts))
+
+
+def claude_complete_response(client, plan, target, self_pane, command, initial_frame, text, validate, pending_reason):
+    # Only called for a proved fresh screen echo; retain its prefix/cursor.
+    initial = screen(initial_frame).splitlines()
+    marker = '❯ ' + command
+    indices = [i for i, line in enumerate(initial) if line.strip() == marker]
+    if not indices:
+        raise Deferred('claude-response-boundary-unknown')
+    prefix = initial[:indices[-1] + 1]
+    cursor = initial_frame.get('latestCursor')
+    if cursor is None:
+        raise Deferred('native-response-freshness-unknown')
+    frame = initial_frame
+    deadline = time.monotonic() + 3
+    for attempt in range(12):
+        try:
+            validate(text)
+            return screen(frame), text
+        except Deferred as error:
+            if str(error) != pending_reason or attempt == 11 or time.monotonic() >= deadline:
+                raise
+        time.sleep(0.05)
+        _, frame = passive_guard(client, plan, target, self_pane)
+        lines = screen(frame).splitlines()
+        commands = [i for i, line in enumerate(lines) if line.lstrip().startswith('❯') and line.strip() != '❯']
+        current_prefix = lines[:commands[-1] + 1] if commands else []
+        count = sum(line.strip() == marker for line in lines)
+        if (not commands or lines[commands[-1]].strip() != marker or frame.get('latestCursor') != cursor or
+                count > len(indices) or len(current_prefix) > len(prefix) or
+                current_prefix != prefix[-len(current_prefix):]):
+            raise Deferred('claude-response-boundary-changed')
+        response = []
+        for line in lines[commands[-1] + 1:]:
+            if line.strip() == '❯':
+                break
+            response.append(line)
+        text = '\n'.join(response)
+
+
+def refresh_claude(client, plan, target, self_pane, journal):
+    installation_before = installation_guard(target)
+    version = installation_before.get('nativeVersion', '')
+    parts = re.fullmatch(r'2\.1\.(\d+)', version)
+    if parts is None or int(parts[1]) < 260 or installation_before.get('dependenciesReady') is not True:
+        raise Deferred('claude-reload-support-and-dependencies-unverified')
+    journal.record('installation-before', handle=target['handle'], installation=installation_before)
+    before = native_status(client, plan, target, self_pane, journal)
+    if before.get('nativeVersion') != version:
+        raise Deferred('claude-native-version-mismatch')
+    journal.record('identity-before', handle=target['handle'], **before)
+    _, help_output = native_query(client, plan, target, self_pane, journal, '/help', 'reload-support')
+    if not re.search(r'(?m)^\s*(?:❯\s*)?/reload-plugins(?:\s|$)', help_output):
+        raise Deferred('claude-reload-command-unsupported')
+    _, listing = native_query(client, plan, target, self_pane, journal, '/plugin list --enabled', 'plugin-preflight',
+                              completion=(lambda text: claude_plugin_listing(text, installation_before, before.get('nativeVersion')),
+                                          'claude-runtime-plugin-list-unknown'))
+    listed_before = claude_plugin_listing(listing, installation_before, before.get('nativeVersion'))
+    listing_matches = listed_before == {p['id'] + ':' + p['scope']: p['version']
+                                       for p in installation_before['plugins'] if p['enabled']}
+    journal.record('runtime-listing-before', handle=target['handle'],
+                   versions=listed_before, matchesInstalled=listing_matches)
+    _, output = native_query(client, plan, target, self_pane, journal, '/reload-plugins', 'native-reload',
+                             completion=(lambda text: claude_reload_summary(text, installation_before),
+                                         'claude-reload-completion-unknown'))
+    summary = claude_reload_summary(output, installation_before)
+    journal.record('reload-completed', handle=target['handle'], counts=summary)
+    after = native_status(client, plan, target, self_pane, journal)
+    journal.record('identity-after', handle=target['handle'], **after)
+    if before != after:
+        raise Deferred('native-identity-or-permissions-mismatch')
+    installation_after = installation_guard(target)
+    journal.record('installation-after', handle=target['handle'], installation=installation_after)
+    return {'handle': target['handle'], 'before': before, 'after': after,
+            'refresh': 'native-reload-observed', 'reloadSummary': summary, 'consumption': 'unverified',
+            'runtimeListedVersionsBefore': listed_before, 'runtimeListingMatchesInstalledBefore': listing_matches,
+            'installedVersion': installed_versions(installation_after), 'consumedVersion': None,
+            'installationBefore': installation_before, 'installationAfter': installation_after}
+
+
+def refresh(client, plan, target, self_pane, journal):
+    if target['provider'] == 'claude':
+        return refresh_claude(client, plan, target, self_pane, journal)
+    installation_before = installation_guard(target)
+    journal.record('installation-before', handle=target['handle'], installation=installation_before)
+    before = native_status(client, plan, target, self_pane, journal)
+    journal.record('identity-before', handle=target['handle'], **before)
+    command = resume_command(target['provider'], before, installed_version=installation_before.get('nativeVersion'))
+    _, exit_frame = guard(client, plan, target, self_pane)
+    normal_exit = {'sessionId': before['sessionId'], 'cursor': exit_frame.get('latestCursor')}
+    if not re.fullmatch(r'\d+', str(normal_exit['cursor'])):
+        raise Deferred('native-exit-freshness-unknown')
+    journal.record('native-exit-planned', handle=target['handle'], **normal_exit)
+    send(client, journal, target, '/exit', 'normal-exit')
+    # Do not send into an uncertain foreground process. No close, kill, Ctrl-C or retry.
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            shell_guard(client, plan, target, normal_exit)
+            break
+        except Deferred as e:
+            if str(e) != 'shell-unconfirmed' or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.2)
+    shell_guard(client, plan, target, normal_exit)
+    journal.record('native-exit-observed', handle=target['handle'], sessionId=before['sessionId'], shellCwd=before['cwd'])
+    send(client, journal, target, command, 'exact-resume')
+    wait_resumed(client, plan, target, self_pane)
+    after = native_status(client, plan, target, self_pane, journal)
+    journal.record('identity-after', handle=target['handle'], **after)
+    if any(before.get(key) != after.get(key) for key in ('sessionId', 'cwd', 'permissions', 'resumeMode')):
+        raise Deferred('native-identity-or-permissions-mismatch')
+    installation_after = installation_guard(target)
+    journal.record('installation-after', handle=target['handle'], installation=installation_after)
+    return {'handle': target['handle'], 'before': before, 'after': after,
+            'refresh': 'native-resume-observed', 'consumption': 'unverified',
+            'installedVersion': installed_versions(installation_after), 'consumedVersion': None,
+            'installationBefore': installation_before, 'installationAfter': installation_after}
+
+
+def validate_plan(plan):
+    obj(plan)
+    if plan.get('schema') != 1 or not token(plan.get('runtimeId')) or not token(plan.get('selfPane')):
+        raise Deferred('invalid-plan')
+    try:
+        if not isinstance(plan.get('operationId'), str):
+            raise Deferred('invalid-plan')
+        uuid.UUID(plan['operationId'])
+    except (KeyError, ValueError, TypeError):
+        raise Deferred('invalid-plan') from None
+    if not isinstance(plan.get('createdAt'), (float, int)) or not 0 <= time.time() - plan['createdAt'] <= 300:
+        raise Deferred('plan-expired')
+    targets = array(plan.get('targets'))
+    if not targets or len({t.get('handle') for t in targets}) != len(targets):
+        raise Deferred('duplicate-or-empty-targets')
+    for t in targets:
+        if t.get('provider') not in ('codex', 'claude') or t.get('state') != 'idle':
+            raise Deferred('invalid-plan')
+        if obj(t.get('installation')).get('state') != 'observed':
+            raise Deferred('installed-versions-unverified')
+        identity = fingerprint(obj(t.get('identity')))
+        if identity['handle'] != t.get('handle') or pane(identity) == plan['selfPane']:
+            raise Deferred('invalid-plan')
+
+
+def apply(client, plan, self_pane, journal_root):
+    client.target_shell_proof = None
+    validate_plan(plan)
+    if getattr(client, 'remote_configured', False) or client.environment or plan.get('environment') or plan.get('remoteConfigured') or any(t['identity']['executionHostId'] != 'local' for t in plan['targets']):
+        raise Deferred('remote-apply-delegate-to-host-session')
+    if not self_pane or self_pane != plan['selfPane']:
+        raise Deferred('self-unidentified')
+    result = {'operationId': plan['operationId'], 'results': [], 'remaining': [t['handle'] for t in plan['targets']]}
+    with Journal(journal_root, plan['operationId']) as journal:
+        for target in plan['targets']:
+            try:
+                result['results'].append(refresh(client, plan, target, self_pane, journal))
+                result['remaining'].pop(0)
+            except (Deferred, OSError) as e:
+                reason = str(e) if isinstance(e, Deferred) else 'journal-or-local-io-failed'
+                result['stopped'] = reason
+                result['recovery'] = {'journal': str(journal.path), 'handle': target['handle'],
+                                      'identity': target['identity'], 'action': 'inspect-before-any-resend'}
+                try:
+                    journal.record('stopped', handle=target['handle'], reason=reason)
+                except (Deferred, OSError):
+                    result['recovery']['journalRecording'] = 'failed-inspect-existing-record'
+                return result
+        try:
+            journal.record('finished')
+        except (Deferred, OSError) as error:
+            result['stopped'] = str(error) if isinstance(error, Deferred) else 'journal-or-local-io-failed'
+            result['recovery'] = {'journal': str(journal.path), 'handle': target['handle'],
+                                  'identity': target['identity'], 'phase': 'final-journal-record',
+                                  'journalRecording': 'failed-inspect-existing-record',
+                                  'action': 'inspect-completed-results-before-any-resend'}
+    return result
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('mode', choices=('inspect', 'plan', 'apply'), nargs='?', default='inspect')
+    p.add_argument('--environment')
+    p.add_argument('--target', action='append', default=[])
+    p.add_argument('--plan', type=Path)
+    p.add_argument('--journal', type=Path, default=Path.home() / '.local/state/tr-kit/runtime-refresh')
+    args = p.parse_args(argv)
+    client = Orca(args.environment)
+    try:
+        self_pane = os.environ.get('ORCA_PANE_KEY')
+        if args.mode == 'apply':
+            if not args.plan or args.target:
+                raise Deferred('apply-requires-plan-only')
+            result = apply(client, json.loads(args.plan.read_text()), self_pane, args.journal)
+        else:
+            report = inspect(client, self_pane)
+            result = make_plan(report, args.target) if args.mode == 'plan' else report
+            if args.mode == 'plan':
+                if not args.plan:
+                    raise Deferred('plan-path-required')
+                with args.plan.open('x') as f:
+                    os.chmod(args.plan, 0o600)
+                    json.dump(result, f, ensure_ascii=False, indent=2)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 2 if result.get('stopped') else 0
+    except (Deferred, OSError, ValueError, TypeError, KeyError):
+        # Do not echo hostile file/CLI contents, even in an exception message.
+        error = sys.exc_info()[1]
+        print(json.dumps({'state': 'deferred', 'reason': str(error) if isinstance(error, Deferred) else 'invalid-input-or-local-io'}))
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())

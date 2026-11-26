@@ -8,7 +8,7 @@ import subprocess
 import sys
 sys.dont_write_bytecode=True
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'common/base/scripts'))
+sys.path.insert(0,str(ROOT/'scripts/lib/common'))
 from secret_guard import verify_scanner
 
 

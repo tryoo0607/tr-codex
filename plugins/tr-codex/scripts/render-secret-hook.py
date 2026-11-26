@@ -12,7 +12,7 @@ def render(product, root, python):
     if product not in ('codex','claude') or not root.is_absolute() or not python.is_absolute():
         raise ValueError('explicit product and absolute paths required')
     events=['PreToolUse','PostToolUse']+(['PostToolUseFailure'] if product=='claude' else [])
-    doc=json.loads((root/f'adapters/{product}/hooks/secret-guard.json.in').read_text())
+    doc=json.loads((root/f'hooks/templates/{product}/secret-guard.json.in').read_text())
     if sorted(doc)!=['hooks'] or sorted(doc['hooks'])!=sorted(events):
         raise ValueError('invalid event registration')
     for event in events:
@@ -25,7 +25,7 @@ def render(product, root, python):
         if product=='claude' and event=='PreToolUse':expected_handler['onFailure']='block'
         if not isinstance(hooks,list) or len(hooks)!=1 or hooks[0]!=expected_handler:
             raise ValueError('invalid handler')
-        hooks[0]['command']=shlex.join([str(python),'-B',str(root/f'adapters/{product}/scripts/secret_guard.py'),'--event',event])
+        hooks[0]['command']=shlex.join([str(python),'-B',str(root/f'scripts/product/{product}/secret_guard.py'),'--event',event])
     return doc
 
 

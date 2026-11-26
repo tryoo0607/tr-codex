@@ -8,7 +8,7 @@ from pathlib import Path
 import stat
 import sys
 sys.dont_write_bytecode=True
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'common/base/scripts'))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts/lib/common'))
 import secret_guard as secrets
 from upstream_artifacts import _opaque_container
 

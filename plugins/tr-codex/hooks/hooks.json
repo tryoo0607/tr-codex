@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/adapters/codex/scripts/secret_guard.py\" --event PreToolUse",
+            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/scripts/product/codex/secret_guard.py\" --event PreToolUse",
             "timeout": 45
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/adapters/codex/scripts/secret_guard.py\" --event PostToolUse",
+            "command": "python3 -B \"${CLAUDE_PLUGIN_ROOT}/scripts/product/codex/secret_guard.py\" --event PostToolUse",
             "timeout": 45
           }
         ]
